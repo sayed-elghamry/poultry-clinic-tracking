@@ -313,6 +313,11 @@
         <label>رأي الطبيب والخلاصة</label>
         <textarea id="v_opinion" placeholder="خلاصة الطبيب وتطوّر الحالة، بالإضافة للتشخيص المرجّح تلقائيًا أعلاه…"></textarea>
       </div>
+      <div class="field" style="margin-top:8px">
+        <label>خطة العلاج (تُكتب هنا بالظبط زي ما هتتطبع في الروشتة)</label>
+        <textarea id="v_txplan" placeholder="مثال: ديوراماكس كيلو + تكسافير 500 سم في العشاء لمدة 3 أيام — يمكن دمج أكثر من دواء في نفس السطر بحرية.&#10;لو اتكتب هنا، هي اللي هتطبع في الروشتة بدل القائمة الآلية تحت. لو سبتها فاضية، هيتم بناء الروشتة تلقائيًا من قائمة «الأدوية الموصوفة» تحت."></textarea>
+        <p class="hint">القائمة الآلية تحت («الأدوية الموصوفة») مستقلة عن الجزء ده — استخدمها لتسجيل كل دواء لوحده وربطه بمرض لغرض إحصاء الاستجابة، سواء كتبت خطة علاج هنا أو لأ.</p>
+      </div>
       <div class="row" style="margin-top:6px">
         <label class="btn sm" style="cursor:pointer">📎 رفع صورة روشتة/تحاليل
           <input type="file" accept="image/*" id="rx_file" style="display:none" onchange="onRxFileChosen(this.files[0])">
@@ -1165,7 +1170,7 @@ async function buildPrescriptionCanvas(override){
 
   // لو اتبعتلها بيانات زيارة محفوظة (override) بتستخدمها بدل قراءة الفورم الحيّة —
   // ده بيضمن إن أدوية أي زيارة قديمة تظهر صح في روشتتها حتى لو الفورم فاضي
-  let client, date, top, fired, opinion, meds;
+  let client, date, top, fired, opinion, meds, treatmentPlan;
   if(override){
     client=STATE.clients.find(c=>c.id===override.clientId);
     date=override.date || new Date().toISOString().slice(0,10);
@@ -1173,6 +1178,7 @@ async function buildPrescriptionCanvas(override){
     fired=(override.composites||[]).map(ar=>({c:{ar}}));
     opinion=override.opinion||"";
     meds=override.medications||[];
+    treatmentPlan=override.treatmentPlan||"";
   }else{
     const clientId=document.getElementById("nv_client").value;
     client=STATE.clients.find(c=>c.id===clientId);
@@ -1182,6 +1188,7 @@ async function buildPrescriptionCanvas(override){
     fired=dxEvalComposites(rows);
     opinion=document.getElementById("v_opinion").value.trim();
     meds=collectMeds();
+    treatmentPlan=document.getElementById("v_txplan").value.trim();
   }
 
   ctx.font=`${Math.round(16*scale)}px Tahoma, Arial`;
@@ -1198,7 +1205,8 @@ async function buildPrescriptionCanvas(override){
 
   // منطقة جسم الروشتة: من تحت حقول الترويسة لحد فوق شريط التذييل الأرجواني
   const bodyTop=H*0.29, bodyBottom=H*0.90;
-  const groups=groupMedsByDays(meds);
+  const usePlan=!!treatmentPlan;
+  const groups=usePlan?[]:groupMedsByDays(meds);
 
   // خطوة قياس (dry run) بأحجام الخط الأساسية، عشان نعرف المحتوى هيحتاج مساحة أد إيه
   const BASE={opinion:20, medHead:21, medLine:19, lineOpinion:25, lineHead:25, lineMed:23, gapAfterOpinion:16, gapAfterGroup:14, gapAfterHead:4};
@@ -1206,7 +1214,16 @@ async function buildPrescriptionCanvas(override){
     ctx.font=`${Math.round(f.opinion*scale)}px Tahoma, Arial`;
     let yy=bodyTop;
     yy=dxWrapAndDraw(ctx, opinion||"—", W*0.93, yy, W*0.86, Math.round(f.lineOpinion*scale), true);
-    if(groups.length){
+    if(usePlan){
+      yy+=Math.round(f.gapAfterOpinion*scale);
+      ctx.font=`bold ${Math.round(f.medHead*scale)}px Tahoma, Arial`;
+      yy=dxWrapAndDraw(ctx, "خطة العلاج:", W*0.93, yy, W*0.86, Math.round(f.lineHead*scale), true);
+      yy+=Math.round(f.gapAfterHead*scale);
+      ctx.font=`${Math.round(f.medLine*scale)}px Tahoma, Arial`;
+      treatmentPlan.split(/\n+/).filter(Boolean).forEach(line=>{
+        yy=dxWrapAndDraw(ctx, line, W*0.93, yy, W*0.86, Math.round(f.lineMed*scale), true);
+      });
+    }else if(groups.length){
       yy+=Math.round(f.gapAfterOpinion*scale);
       groups.forEach(g=>{
         ctx.font=`bold ${Math.round(f.medHead*scale)}px Tahoma, Arial`;
@@ -1235,7 +1252,16 @@ async function buildPrescriptionCanvas(override){
   let y=bodyTop;
   y=dxWrapAndDraw(ctx, opinion || "—", W*0.93, y, W*0.86, Math.round(F.lineOpinion*scale));
 
-  if(groups.length){
+  if(usePlan){
+    y+=Math.round(F.gapAfterOpinion*scale);
+    ctx.font=`bold ${Math.round(F.medHead*scale)}px Tahoma, Arial`;
+    y=dxWrapAndDraw(ctx, "خطة العلاج:", W*0.93, y, W*0.86, Math.round(F.lineHead*scale));
+    y+=Math.round(F.gapAfterHead*scale);
+    ctx.font=`${Math.round(F.medLine*scale)}px Tahoma, Arial`;
+    treatmentPlan.split(/\n+/).filter(Boolean).forEach(line=>{
+      y=dxWrapAndDraw(ctx, line, W*0.93, y, W*0.86, Math.round(F.lineMed*scale));
+    });
+  }else if(groups.length){
     y+=Math.round(F.gapAfterOpinion*scale);
     groups.forEach(g=>{
       ctx.font=`bold ${Math.round(F.medHead*scale)}px Tahoma, Arial`;
@@ -1284,7 +1310,7 @@ async function printSavedVisitPrescription(visitId){
       clientId:v.clientId, date:v.date,
       topDiagnoses:v.diagnosis&&v.diagnosis.topDiagnoses,
       composites:v.diagnosis&&v.diagnosis.composites,
-      opinion:v.opinion, medications:v.medications
+      opinion:v.opinion, medications:v.medications, treatmentPlan:v.treatmentPlan
     });
     const dataUrl=canvas.toDataURL("image/jpeg",0.92);
     const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
@@ -1577,7 +1603,7 @@ function renderClientDetail(id){
           ${v.prescriptionUrl?`<div class="small">📎 <a href="${v.prescriptionUrl}" target="_blank">صورة الروشتة/التحاليل</a></div>`:''}
           <div class="row" style="margin-top:4px">
             <button class="btn sm" onclick="editVisit('${v.id}')">✏️ تعديل الزيارة</button>
-            ${(meds.length||v.opinion)?`<button class="btn sm" onclick="printSavedVisitPrescription('${v.id}')">🖨️ روشتة PDF</button>`:''}
+            ${(meds.length||v.opinion||v.treatmentPlan)?`<button class="btn sm" onclick="printSavedVisitPrescription('${v.id}')">🖨️ روشتة PDF</button>`:''}
             <button class="btn sm danger" onclick="deleteVisit('${v.id}')">🗑 حذف</button>
           </div>
         </div>`;
@@ -1717,8 +1743,9 @@ function exportAllStatsExcel(){
   const drugMap={};
   STATE.visits.forEach(v=>(v.medications||[]).forEach(m=>{
     if(!m.response||!m.drug)return;
-    const key=(m.drug||"").trim().toLowerCase()+"|"+(m.diseaseId||"");
-    drugMap[key]=drugMap[key]||{drug:m.drug,diseaseId:m.diseaseId,excellent:0,partial:0,weak:0,failed:0};
+    const effDisease=m.diseaseId||v.confirmedDiagnosisId||"";
+    const key=(m.drug||"").trim().toLowerCase()+"|"+effDisease;
+    drugMap[key]=drugMap[key]||{drug:m.drug,diseaseId:effDisease,excellent:0,partial:0,weak:0,failed:0};
     drugMap[key][m.response]=(drugMap[key][m.response]||0)+1;
   }));
   const drugRows=Object.values(drugMap).map(d=>{
@@ -1919,7 +1946,7 @@ function getMedDays(row){
 function onMedRowInput(rowId){
   const row=document.getElementById(rowId); if(!row)return;
   const drug=row.querySelector(".m_drug").value.trim();
-  const diseaseId=row.querySelector(".m_disease").value;
+  const diseaseId=row.querySelector(".m_disease").value || document.getElementById("v_confirmed").value;
   const note=row.querySelector(".m_note");
   if(!drug||!diseaseId){note.textContent="";return;}
   const stats=getDrugResponseStats(diseaseId,drug);
@@ -1968,7 +1995,8 @@ function getDrugResponseStats(diseaseId,drugName){
   let excellent=0,partial=0,weak=0,failed=0,total=0;
   STATE.visits.forEach(v=>{
     (v.medications||[]).forEach(m=>{
-      if(m.diseaseId===diseaseId && norm(m.drug)===target && m.response){
+      const effectiveDiseaseId=m.diseaseId||v.confirmedDiagnosisId||null;
+      if(effectiveDiseaseId===diseaseId && norm(m.drug)===target && m.response){
         total++;
         if(m.response==="excellent")excellent++;
         else if(m.response==="partial")partial++;
@@ -2118,6 +2146,7 @@ async function saveVisitInner(clientId,date){
     production:document.getElementById("v_prod").value,
     lastVaccine:document.getElementById("v_vacc").value,
     opinion:document.getElementById("v_opinion").value.trim(),
+    treatmentPlan:document.getElementById("v_txplan").value.trim(),
     confirmedDiagnosisId: document.getElementById("v_confirmed").value || null,
     prescriptionUrl: window.__rxURL || null,
     diagnosis,
@@ -2160,7 +2189,7 @@ async function saveVisitInner(clientId,date){
     window.__pendingMedVisitId=null;
   }
 
-  ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion",
+  ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion","v_txplan",
    "fi_ammonia","fi_litter","fi_density","fi_ph","nv_house","nv_age","nv_birdcount",
    "nf_placement","nf_birdcount0"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("v_feed").value=""; document.getElementById("fi_vent").value=""; document.getElementById("fi_biosec").value="";
@@ -2192,6 +2221,7 @@ function editVisit(id){
   document.getElementById("v_prod").value=v.production||"";
   document.getElementById("v_vacc").value=v.lastVaccine||"";
   document.getElementById("v_opinion").value=v.opinion||"";
+  document.getElementById("v_txplan").value=v.treatmentPlan||"";
   document.getElementById("nv_location").value=v.visitLocation||"farm";
   document.getElementById("v_confirmed").value=v.confirmedDiagnosisId||"";
   const fi=v.farmInspection||{};
