@@ -44,7 +44,8 @@
   .card h2,.card h3{margin-top:0;color:var(--ink);font-size:1rem}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  @media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
+  .grid4{display:grid;grid-template-columns:.7fr 1fr .7fr 1.1fr;gap:8px}
+  @media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}.grid4{grid-template-columns:1fr 1fr}}
   .field label{display:block;font-size:.74rem;color:var(--muted);font-weight:600;margin-bottom:3px}
   .field input,.field select,.field textarea{width:100%;font-family:var(--font);font-size:.9rem;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
   .field textarea{min-height:60px;resize:vertical}
@@ -182,6 +183,9 @@
   <!-- ============ TAB: DASHBOARD ============ -->
   <div class="panel active" id="tab-dashboard">
     <div class="grid3" id="dashStats"></div>
+    <div class="row" style="margin:6px 0">
+      <button class="btn sm" onclick="exportAllStatsExcel()">📊 تصدير إحصائي شامل (Excel) — كل الحالات</button>
+    </div>
     <div class="card">
       <h2>⚠ تنبيهات الأفواج</h2>
       <div id="dashAlerts"></div>
@@ -321,6 +325,9 @@
       <hr class="divider">
       <h3>الأدوية الموصوفة في هذه الزيارة</h3>
       <p class="hint">حدد أيام إعطاء كل دواء — الأدوية اللي على نفس الأيام هتتجمع تلقائيًا تحت نفس عنوان الأيام في الروشتة المطبوعة، بالظبط زي الروشتة الورقية.</p>
+      <datalist id="m_amount_list">
+        <option value="ربع"><option value="نص"><option value="1"><option value="1 ونص"><option value="2"><option value="3"><option value="0.25"><option value="0.5">
+      </datalist>
       <div id="medRows"></div>
       <button type="button" class="btn sm" onclick="addMedRow()">+ إضافة دواء</button>
 
@@ -1131,17 +1138,17 @@ async function onRxFileChosen(file){
 }
 
 /* ---------------------- توليد روشتة PDF بترويسة العيادة ---------------------- */
-function dxWrapAndDraw(ctx,text,xRight,yStart,maxWidth,lineHeight){
+function dxWrapAndDraw(ctx,text,xRight,yStart,maxWidth,lineHeight,dryRun){
   const words=(text||"").split(/\s+/).filter(Boolean);
   let line="", y=yStart;
   for(const w of words){
     const test=line?line+" "+w:w;
     if(ctx.measureText(test).width>maxWidth && line){
-      ctx.fillText(line,xRight,y);
+      if(!dryRun) ctx.fillText(line,xRight,y);
       line=w; y+=lineHeight;
     } else line=test;
   }
-  if(line)ctx.fillText(line,xRight,y);
+  if(line){ if(!dryRun) ctx.fillText(line,xRight,y); }
   return y+lineHeight;
 }
 async function buildPrescriptionCanvas(override){
@@ -1177,32 +1184,68 @@ async function buildPrescriptionCanvas(override){
     meds=collectMeds();
   }
 
-  ctx.font=`${Math.round(15*scale)}px Tahoma, Arial`;
-  ctx.fillText(date, W*0.615, H*0.128);
-  ctx.fillText(client?client.name:"", W*0.955, H*0.128);
-  ctx.fillText(client?(client.address||""):"", W*0.955, H*0.153);
+  ctx.font=`${Math.round(16*scale)}px Tahoma, Arial`;
+  ctx.fillText(date, W*0.615, H*0.170);
+  ctx.font=`${Math.round(16*scale)}px Tahoma, Arial`;
+  ctx.fillText(client?client.name:"", W*0.955, H*0.210);
+  ctx.font=`${Math.round(14*scale)}px Tahoma, Arial`;
+  ctx.fillText(client?(client.address||""):"", W*0.955, H*0.235);
   if(top){
     const dxText=`${top.d.ar} (${(+top.score).toFixed(1)})${fired.length?' — '+fired.map(f=>f.c.ar).join('، '):''}`;
-    ctx.font=`${Math.round(14*scale)}px Tahoma, Arial`;
-    dxWrapAndDraw(ctx,dxText, W*0.685, H*0.103, W*0.60, Math.round(16*scale));
+    ctx.font=`${Math.round(15*scale)}px Tahoma, Arial`;
+    dxWrapAndDraw(ctx,dxText, W*0.620, H*0.175, W*0.55, Math.round(17*scale));
   }
 
-  ctx.font=`${Math.round(16*scale)}px Tahoma, Arial`;
-  let y=H*0.24;
-  y=dxWrapAndDraw(ctx, opinion || "—", W*0.93, y, W*0.86, Math.round(19*scale));
+  // منطقة جسم الروشتة: من تحت حقول الترويسة لحد فوق شريط التذييل الأرجواني
+  const bodyTop=H*0.29, bodyBottom=H*0.90;
+  const groups=groupMedsByDays(meds);
 
-  if(meds.length){
-    y+=Math.round(10*scale);
-    const groups=groupMedsByDays(meds);
-    groups.forEach(g=>{
-      ctx.font=`bold ${Math.round(16*scale)}px Tahoma, Arial`;
-      y=dxWrapAndDraw(ctx, g.label, W*0.93, y, W*0.86, Math.round(19*scale));
-      y+=Math.round(2*scale);
-      ctx.font=`${Math.round(15*scale)}px Tahoma, Arial`;
-      g.items.forEach(m=>{
-        y=dxWrapAndDraw(ctx, formatMedLine(m), W*0.93, y, W*0.86, Math.round(18*scale));
+  // خطوة قياس (dry run) بأحجام الخط الأساسية، عشان نعرف المحتوى هيحتاج مساحة أد إيه
+  const BASE={opinion:20, medHead:21, medLine:19, lineOpinion:25, lineHead:25, lineMed:23, gapAfterOpinion:16, gapAfterGroup:14, gapAfterHead:4};
+  function measureAt(f){
+    ctx.font=`${Math.round(f.opinion*scale)}px Tahoma, Arial`;
+    let yy=bodyTop;
+    yy=dxWrapAndDraw(ctx, opinion||"—", W*0.93, yy, W*0.86, Math.round(f.lineOpinion*scale), true);
+    if(groups.length){
+      yy+=Math.round(f.gapAfterOpinion*scale);
+      groups.forEach(g=>{
+        ctx.font=`bold ${Math.round(f.medHead*scale)}px Tahoma, Arial`;
+        yy=dxWrapAndDraw(ctx, g.label, W*0.93, yy, W*0.86, Math.round(f.lineHead*scale), true);
+        yy+=Math.round(f.gapAfterHead*scale);
+        ctx.font=`${Math.round(f.medLine*scale)}px Tahoma, Arial`;
+        g.items.forEach(m=>{ yy=dxWrapAndDraw(ctx, formatMedLine(m), W*0.93, yy, W*0.86, Math.round(f.lineMed*scale), true); });
+        yy+=Math.round(f.gapAfterGroup*scale);
       });
-      y+=Math.round(8*scale);
+    }
+    return yy;
+  }
+  const neededEnd=measureAt(BASE);
+  const neededHeight=neededEnd-bodyTop;
+  const availableHeight=bodyBottom-bodyTop;
+  // لو المحتوى كتير (أدوية كتيرة/رأي طويل) بنصغّر الخط تلقائيًا عشان يفضل كله في صفحة واحدة، مش هيفيض تحت
+  let fitScale=1;
+  if(neededHeight>availableHeight) fitScale=Math.max(0.55, availableHeight/neededHeight);
+  const F={
+    opinion:BASE.opinion*fitScale, medHead:BASE.medHead*fitScale, medLine:BASE.medLine*fitScale,
+    lineOpinion:BASE.lineOpinion*fitScale, lineHead:BASE.lineHead*fitScale, lineMed:BASE.lineMed*fitScale,
+    gapAfterOpinion:BASE.gapAfterOpinion*fitScale, gapAfterGroup:BASE.gapAfterGroup*fitScale, gapAfterHead:BASE.gapAfterHead*fitScale
+  };
+
+  ctx.font=`${Math.round(F.opinion*scale)}px Tahoma, Arial`;
+  let y=bodyTop;
+  y=dxWrapAndDraw(ctx, opinion || "—", W*0.93, y, W*0.86, Math.round(F.lineOpinion*scale));
+
+  if(groups.length){
+    y+=Math.round(F.gapAfterOpinion*scale);
+    groups.forEach(g=>{
+      ctx.font=`bold ${Math.round(F.medHead*scale)}px Tahoma, Arial`;
+      y=dxWrapAndDraw(ctx, g.label, W*0.93, y, W*0.86, Math.round(F.lineHead*scale));
+      y+=Math.round(F.gapAfterHead*scale);
+      ctx.font=`${Math.round(F.medLine*scale)}px Tahoma, Arial`;
+      g.items.forEach(m=>{
+        y=dxWrapAndDraw(ctx, formatMedLine(m), W*0.93, y, W*0.86, Math.round(F.lineMed*scale));
+      });
+      y+=Math.round(F.gapAfterGroup*scale);
     });
   }
 
@@ -1587,9 +1630,12 @@ function printClientDetail(){
 }
 function exportVisitsToExcel(visits, label){
   if(!visits.length){alert("لا توجد زيارات لتصديرها.");return;}
+  const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
   const rows=visits.map(v=>{
     const flock=STATE.flocks.find(f=>f.id===v.flockId);
     const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
+    const confirmed=v.confirmedDiagnosisId?DISEASES.find(d=>d.id===v.confirmedDiagnosisId):null;
+    const meds=v.medications||[];
     return {
       "التاريخ":v.date,
       "الفوج":flock?flock.flockCode:"",
@@ -1601,6 +1647,9 @@ function exportVisitsToExcel(visits, label){
       "الإنتاج %":v.production||"",
       "المشتبه الأول":top?top.ar:"",
       "قوة الترجيح":top?top.score:"",
+      "التشخيص المؤكد":confirmed?confirmed.ar:"",
+      "الأدوية الموصوفة":meds.map(m=>`${m.drug}${formatMedDose(m)?' ('+formatMedDose(m)+')':''}`).join(' ؛ '),
+      "استجابة العلاج":meds.map(m=>m.response?RESP_LABEL[m.response]||m.response:"").filter(Boolean).join(' ؛ '),
       "رأي الطبيب":v.opinion||""
     };
   });
@@ -1619,6 +1668,93 @@ function exportClientExcel(){
   const id=currentClientDetailId; const c=STATE.clients.find(x=>x.id===id); if(!c)return;
   const visits=STATE.visits.filter(v=>v.clientId===id).sort((a,b)=>new Date(a.date)-new Date(b.date));
   exportVisitsToExcel(visits, c.name);
+}
+/* تصدير إحصائي شامل لكل الحالات المسجّلة في العيادة: كل الزيارات + تكرار الأمراض + فعالية الأدوية + منحنى النفوق حسب العمر */
+function exportAllStatsExcel(){
+  if(!STATE.visits.length){alert("لا توجد زيارات مسجّلة بعد.");return;}
+  const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
+  const wb=XLSX.utils.book_new();
+
+  // 1) كل الزيارات (كل العملاء)
+  const allRows=STATE.visits.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).map(v=>{
+    const client=STATE.clients.find(c=>c.id===v.clientId);
+    const flock=STATE.flocks.find(f=>f.id===v.flockId);
+    const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
+    const confirmed=v.confirmedDiagnosisId?DISEASES.find(d=>d.id===v.confirmedDiagnosisId):null;
+    const meds=v.medications||[];
+    return {
+      "التاريخ":v.date, "العميل":client?client.name:"", "الفوج":flock?flock.flockCode:"",
+      "نوع الطائر":flock?(BIRD_LABEL[flock.birdType]||flock.birdType):"",
+      "العمر (يوم)":v.ageDays??"", "عدد الطيور":v.birdCount??"",
+      "النفوق اليومي %":v.mortalityDaily||"", "النفوق التراكمي %":v.mortalityCum||"",
+      "المشتبه الأول":top?top.ar:"", "التشخيص المؤكد":confirmed?confirmed.ar:"",
+      "الأدوية الموصوفة":meds.map(m=>`${m.drug}${formatMedDose(m)?' ('+formatMedDose(m)+')':''}`).join(' ؛ ')
+    };
+  });
+  const wsAll=XLSX.utils.json_to_sheet(allRows);
+  wsAll['!cols']=Object.keys(allRows[0]||{}).map(()=>({wch:18}));
+  XLSX.utils.book_append_sheet(wb,wsAll,"كل الزيارات");
+
+  // 2) تكرار الأمراض (كام مرة اتشخصت كل حالة، ترجيح أولي مقابل تأكيد فعلي)
+  const freq={};
+  STATE.visits.forEach(v=>{
+    const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
+    if(top){ freq[top.id]=freq[top.id]||{ar:top.ar,suspected:0,confirmed:0}; freq[top.id].suspected++; }
+    if(v.confirmedDiagnosisId){
+      const d=DISEASES.find(x=>x.id===v.confirmedDiagnosisId);
+      if(d){ freq[d.id]=freq[d.id]||{ar:d.ar,suspected:0,confirmed:0}; freq[d.id].confirmed++; }
+    }
+  });
+  const freqRows=Object.values(freq).sort((a,b)=>(b.confirmed+b.suspected)-(a.confirmed+a.suspected))
+    .map(f=>({ "المرض":f.ar, "عدد مرات الترجيح الأول":f.suspected, "عدد مرات التأكيد الفعلي":f.confirmed }));
+  if(freqRows.length){
+    const wsFreq=XLSX.utils.json_to_sheet(freqRows);
+    wsFreq['!cols']=[{wch:28},{wch:22},{wch:22}];
+    XLSX.utils.book_append_sheet(wb,wsFreq,"تكرار الأمراض");
+  }
+
+  // 3) فعالية الأدوية (لكل دواء × مرض، من كل الزيارات المؤكَّدة الاستجابة)
+  const drugMap={};
+  STATE.visits.forEach(v=>(v.medications||[]).forEach(m=>{
+    if(!m.response||!m.drug)return;
+    const key=(m.drug||"").trim().toLowerCase()+"|"+(m.diseaseId||"");
+    drugMap[key]=drugMap[key]||{drug:m.drug,diseaseId:m.diseaseId,excellent:0,partial:0,weak:0,failed:0};
+    drugMap[key][m.response]=(drugMap[key][m.response]||0)+1;
+  }));
+  const drugRows=Object.values(drugMap).map(d=>{
+    const total=d.excellent+d.partial+d.weak+d.failed;
+    return {
+      "الدواء":d.drug, "المرض المرتبط":d.diseaseId?dxName(d.diseaseId):"—",
+      "عدد الحالات":total, "ممتازة":d.excellent, "جزئية":d.partial, "ضعيفة":d.weak, "فشل":d.failed,
+      "نسبة النجاح %":total?Math.round(((d.excellent+d.partial)/total)*100):""
+    };
+  }).sort((a,b)=>b["عدد الحالات"]-a["عدد الحالات"]);
+  if(drugRows.length){
+    const wsDrug=XLSX.utils.json_to_sheet(drugRows);
+    wsDrug['!cols']=Object.keys(drugRows[0]).map(()=>({wch:16}));
+    XLSX.utils.book_append_sheet(wb,wsDrug,"فعالية الأدوية");
+  }
+
+  // 4) منحنى النفوق حسب العمر (متوسط % النفوق اليومي لكل عمر — جاهز لعمل رسم بياني في إكسل)
+  const byAge={};
+  STATE.visits.forEach(v=>{
+    if(v.ageDays==null||v.mortalityDaily===""||v.mortalityDaily==null)return;
+    const m=parseFloat(v.mortalityDaily); if(isNaN(m))return;
+    byAge[v.ageDays]=byAge[v.ageDays]||[];
+    byAge[v.ageDays].push(m);
+  });
+  const curveRows=Object.keys(byAge).map(Number).sort((a,b)=>a-b).map(age=>{
+    const arr=byAge[age];
+    const avg=arr.reduce((s,x)=>s+x,0)/arr.length;
+    return { "العمر (يوم)":age, "متوسط النفوق اليومي %":+avg.toFixed(2), "عدد الزيارات المسجّلة":arr.length };
+  });
+  if(curveRows.length){
+    const wsCurve=XLSX.utils.json_to_sheet(curveRows);
+    wsCurve['!cols']=[{wch:14},{wch:22},{wch:22}];
+    XLSX.utils.book_append_sheet(wb,wsCurve,"منحنى النفوق حسب العمر");
+  }
+
+  XLSX.writeFile(wb, `إحصاء-شامل-${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 function shareClientWhatsApp(){
   const id=currentClientDetailId; const c=STATE.clients.find(x=>x.id===id); if(!c)return;
@@ -1745,10 +1881,11 @@ function addMedRow(){
       <div class="field"><label>اسم الدواء</label><input class="m_drug" oninput="onMedRowInput('${id}')"></div>
       <div class="field"><label>مرتبط بمرض</label><select class="m_disease" onchange="onMedRowInput('${id}')">${diseaseOptions}</select></div>
     </div>
-    <div class="grid3" style="margin-top:6px">
-      <div class="field"><label>الكمية</label><input class="m_amount" type="number" step="0.01" inputmode="decimal"></div>
+    <div class="grid4" style="margin-top:6px">
+      <div class="field"><label>الكمية</label><input class="m_amount" list="m_amount_list" placeholder="1 / نص / ربع"></div>
       <div class="field"><label>الوحدة</label>
         <select class="m_unit"><option value="">—</option><option>جم</option><option>سم</option><option>كجم</option><option>مل</option><option>علبة</option></select></div>
+      <div class="field"><label>لكل (كمية)</label><input class="m_perqty" list="m_amount_list" placeholder="1 / نص"></div>
       <div class="field"><label>لكل</label>
         <select class="m_per"><option value="">—</option><option>لتر ماء</option><option>كيلو عليقة</option><option>طن عليقة</option><option>طن مياه</option><option>رأس (حقن)</option></select></div>
     </div>
@@ -1798,9 +1935,10 @@ function onMedRowInput(rowId){
 }
 /* بيبني نص الجرعة المطبوع من الحقول المنظّمة، مع التوافق مع بيانات قديمة كانت متسجّلة كنص حر في dose */
 function formatMedDose(m){
-  if(m.amount||m.unit||m.per){
+  if(m.amount||m.unit||m.per||m.perqty){
     let s=`${m.amount||''} ${m.unit||''}`.trim();
-    if(m.per) s+= (s?' / ':'')+m.per;
+    const perFull=`${m.perqty||''} ${m.per||''}`.trim();
+    if(perFull) s+= (s?' / ':'')+perFull;
     return s.trim();
   }
   return m.dose||"";
@@ -1810,6 +1948,7 @@ function collectMeds(){
     drug:r.querySelector(".m_drug").value.trim(),
     amount:r.querySelector(".m_amount").value.trim(),
     unit:r.querySelector(".m_unit").value,
+    perqty:r.querySelector(".m_perqty").value.trim(),
     per:r.querySelector(".m_per").value,
     timing:r.querySelector(".m_timing").value,
     duration:r.querySelector(".m_duration").value.trim(),
@@ -2100,6 +2239,7 @@ function editVisit(id){
       row.querySelector(".m_drug").value=m.drug||"";
       row.querySelector(".m_amount").value=m.amount||"";
       row.querySelector(".m_unit").value=m.unit||"";
+      row.querySelector(".m_perqty").value=m.perqty||"";
       row.querySelector(".m_per").value=m.per||"";
       row.querySelector(".m_timing").value=m.timing||"";
       row.querySelector(".m_duration").value=m.duration||"";
