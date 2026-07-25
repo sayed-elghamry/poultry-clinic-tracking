@@ -134,6 +134,10 @@
   .cand.exp .why{display:block}
   .dxempty{padding:16px;text-align:center;color:var(--muted);font-size:.84rem}
 
+  .medcard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:#FBFDFC}
+  .daypick{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+  .daybtn{font-family:var(--font);font-size:.72rem;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--muted)}
+  .daybtn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
   .statbox{background:#F7FAF9;border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-align:center}
   .statbox .num{font-size:1.3rem;font-weight:800;color:var(--ink-2)}
   .statbox .lbl{font-size:.72rem;color:var(--muted);margin-top:2px}
@@ -316,6 +320,7 @@
 
       <hr class="divider">
       <h3>الأدوية الموصوفة في هذه الزيارة</h3>
+      <p class="hint">حدد أيام إعطاء كل دواء — الأدوية اللي على نفس الأيام هتتجمع تلقائيًا تحت نفس عنوان الأيام في الروشتة المطبوعة، بالظبط زي الروشتة الورقية.</p>
       <div id="medRows"></div>
       <button type="button" class="btn sm" onclick="addMedRow()">+ إضافة دواء</button>
 
@@ -339,7 +344,7 @@
 
       <hr class="divider">
       <div class="row">
-        <button class="btn pri" onclick="saveVisit()">حفظ الزيارة/المتابعة</button>
+        <button class="btn pri" id="btnSaveVisit" onclick="saveVisit()">حفظ الزيارة/المتابعة</button>
         <span id="saveMsg" class="hint"></span>
       </div>
     </div>
@@ -1139,7 +1144,7 @@ function dxWrapAndDraw(ctx,text,xRight,yStart,maxWidth,lineHeight){
   if(line)ctx.fillText(line,xRight,y);
   return y+lineHeight;
 }
-async function buildPrescriptionCanvas(){
+async function buildPrescriptionCanvas(override){
   const img=new Image();
   img.src=LETTERHEAD_B64;
   await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;});
@@ -1151,20 +1156,33 @@ async function buildPrescriptionCanvas(){
   ctx.drawImage(img,0,0,W,H);
   ctx.direction="rtl"; ctx.textAlign="right"; ctx.fillStyle="#17322c";
 
-  const clientId=document.getElementById("nv_client").value;
-  const client=STATE.clients.find(c=>c.id===clientId);
-  const date=document.getElementById("nv_date").value || new Date().toISOString().slice(0,10);
-  const rows=dxScoreAll();
-  const top=rows[0];
-  const fired=dxEvalComposites(rows);
-  const opinion=document.getElementById("v_opinion").value.trim();
+  // لو اتبعتلها بيانات زيارة محفوظة (override) بتستخدمها بدل قراءة الفورم الحيّة —
+  // ده بيضمن إن أدوية أي زيارة قديمة تظهر صح في روشتتها حتى لو الفورم فاضي
+  let client, date, top, fired, opinion, meds;
+  if(override){
+    client=STATE.clients.find(c=>c.id===override.clientId);
+    date=override.date || new Date().toISOString().slice(0,10);
+    top=(override.topDiagnoses&&override.topDiagnoses[0])?{d:{ar:override.topDiagnoses[0].ar},score:override.topDiagnoses[0].score}:null;
+    fired=(override.composites||[]).map(ar=>({c:{ar}}));
+    opinion=override.opinion||"";
+    meds=override.medications||[];
+  }else{
+    const clientId=document.getElementById("nv_client").value;
+    client=STATE.clients.find(c=>c.id===clientId);
+    date=document.getElementById("nv_date").value || new Date().toISOString().slice(0,10);
+    const rows=dxScoreAll();
+    top=rows[0];
+    fired=dxEvalComposites(rows);
+    opinion=document.getElementById("v_opinion").value.trim();
+    meds=collectMeds();
+  }
 
   ctx.font=`${Math.round(15*scale)}px Tahoma, Arial`;
   ctx.fillText(date, W*0.615, H*0.128);
   ctx.fillText(client?client.name:"", W*0.955, H*0.128);
   ctx.fillText(client?(client.address||""):"", W*0.955, H*0.153);
   if(top){
-    const dxText=`${top.d.ar} (${top.score.toFixed(1)})${fired.length?' — '+fired.map(f=>f.c.ar).join('، '):''}`;
+    const dxText=`${top.d.ar} (${(+top.score).toFixed(1)})${fired.length?' — '+fired.map(f=>f.c.ar).join('، '):''}`;
     ctx.font=`${Math.round(14*scale)}px Tahoma, Arial`;
     dxWrapAndDraw(ctx,dxText, W*0.685, H*0.103, W*0.60, Math.round(16*scale));
   }
@@ -1173,20 +1191,65 @@ async function buildPrescriptionCanvas(){
   let y=H*0.24;
   y=dxWrapAndDraw(ctx, opinion || "—", W*0.93, y, W*0.86, Math.round(19*scale));
 
-  const meds=collectMeds();
   if(meds.length){
     y+=Math.round(10*scale);
-    ctx.font=`bold ${Math.round(16*scale)}px Tahoma, Arial`;
-    ctx.fillText("العلاج الموصوف:", W*0.93, y);
-    y+=Math.round(19*scale);
-    ctx.font=`${Math.round(15*scale)}px Tahoma, Arial`;
-    meds.forEach(m=>{
-      const line=`• ${m.drug}${m.dose?' — '+m.dose:''}${m.diseaseId?' ('+dxName(m.diseaseId)+')':''}`;
-      y=dxWrapAndDraw(ctx, line, W*0.93, y, W*0.86, Math.round(18*scale));
+    const groups=groupMedsByDays(meds);
+    groups.forEach(g=>{
+      ctx.font=`bold ${Math.round(16*scale)}px Tahoma, Arial`;
+      y=dxWrapAndDraw(ctx, g.label, W*0.93, y, W*0.86, Math.round(19*scale));
+      y+=Math.round(2*scale);
+      ctx.font=`${Math.round(15*scale)}px Tahoma, Arial`;
+      g.items.forEach(m=>{
+        y=dxWrapAndDraw(ctx, formatMedLine(m), W*0.93, y, W*0.86, Math.round(18*scale));
+      });
+      y+=Math.round(8*scale);
     });
   }
 
   return canvas;
+}
+/* تجميع الأدوية حسب أيام الإعطاء المتطابقة — بيحافظ على ترتيب ظهور كل مجموعة أيام لأول مرة، زي ما بيكتبها الطبيب في الروشتة الورقية */
+function groupMedsByDays(meds){
+  const groups=[]; const index={};
+  meds.forEach(m=>{
+    const key=(m.days&&m.days.length)?[...m.days].sort((a,b)=>a-b).join(","):"";
+    if(!(key in index)){
+      index[key]=groups.length;
+      const label=key? DAY_NAMES.filter((d,i)=>key.split(",").map(Number).includes(i)).join("، ") : "يوميًا";
+      groups.push({label,items:[]});
+    }
+    groups[index[key]].items.push(m);
+  });
+  return groups;
+}
+function formatMedLine(m){
+  let parts=[`• ${m.drug}`];
+  const dose=formatMedDose(m);
+  if(dose) parts.push(dose);
+  if(m.timing) parts.push(m.timing);
+  if(m.extra) parts.push(m.extra);
+  if(m.duration) parts.push(`لمدة ${m.duration} يوم`);
+  if(m.diseaseId) parts.push(`(${dxName(m.diseaseId)})`);
+  return parts.join(" — ");
+}
+/* طباعة روشتة PDF لزيارة محفوظة سابقًا مباشرة من بياناتها (بدون الحاجة لفتح وضع التعديل) */
+async function printSavedVisitPrescription(visitId){
+  const v=STATE.visits.find(x=>x.id===visitId); if(!v)return;
+  const client=STATE.clients.find(c=>c.id===v.clientId);
+  try{
+    const canvas=await buildPrescriptionCanvas({
+      clientId:v.clientId, date:v.date,
+      topDiagnoses:v.diagnosis&&v.diagnosis.topDiagnoses,
+      composites:v.diagnosis&&v.diagnosis.composites,
+      opinion:v.opinion, medications:v.medications
+    });
+    const dataUrl=canvas.toDataURL("image/jpeg",0.92);
+    const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
+    pdf.addImage(dataUrl,"JPEG",0,0,210,297);
+    pdf.save(`روشتة-${client?client.name:"عميل"}-${v.date}.pdf`);
+  }catch(e){
+    alert("⚠ تعذّر توليد الروشتة: "+(e.message||e));
+  }
 }
 async function previewPrescriptionPDF(){
   const clientId=document.getElementById("nv_client").value;
@@ -1306,7 +1369,9 @@ function renderDashboard(){
 
 /* ---------------------- العملاء ---------------------- */
 let editingClientId=null;
+let savingClient=false;
 async function saveClient(){
+  if(savingClient) return;
   const name=document.getElementById("cl_name").value.trim();
   if(!name){alert("اكتب اسم العميل أولاً.");return;}
   const data={
@@ -1315,13 +1380,24 @@ async function saveClient(){
     clientType:document.getElementById("cl_type").value,
     birdType:document.getElementById("cl_birdtype").value
   };
-  if(editingClientId){
-    await fs.collection("clients").doc(editingClientId).update(data);
-    cancelClientEdit();
-  }else{
-    data.createdAt=new Date().toISOString();
-    await fs.collection("clients").add(data);
-    document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";
+  savingClient=true;
+  const btn=document.getElementById("clSaveBtn");
+  const oldTxt=btn?btn.textContent:"";
+  if(btn){btn.disabled=true; btn.textContent="⏳ جارِ الحفظ…";}
+  try{
+    if(editingClientId){
+      await fs.collection("clients").doc(editingClientId).update(data);
+      cancelClientEdit();
+    }else{
+      data.createdAt=new Date().toISOString();
+      await fs.collection("clients").add(data);
+      document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";
+    }
+  }catch(e){
+    alert("⚠ تعذّر حفظ العميل: "+(e.message||e));
+  }finally{
+    savingClient=false;
+    if(btn){btn.disabled=false; btn.textContent=oldTxt;}
   }
 }
 function editClient(id){
@@ -1348,12 +1424,14 @@ async function deleteClient(id){
   if(!confirm(`تأكيد حذف العميل "${c.name}" وكل أفواجه وزياراته نهائيًا؟ لا يمكن التراجع.`))return;
   const flocks=STATE.flocks.filter(f=>f.clientId===id);
   const visits=STATE.visits.filter(v=>v.clientId===id);
-  const batch=fs.batch();
-  visits.forEach(v=>batch.delete(fs.collection("visits").doc(v.id)));
-  flocks.forEach(f=>batch.delete(fs.collection("flocks").doc(f.id)));
-  batch.delete(fs.collection("clients").doc(id));
-  await batch.commit();
-  if(currentClientDetailId===id){currentClientDetailId=null; showTab("clients");}
+  try{
+    const batch=fs.batch();
+    visits.forEach(v=>batch.delete(fs.collection("visits").doc(v.id)));
+    flocks.forEach(f=>batch.delete(fs.collection("flocks").doc(f.id)));
+    batch.delete(fs.collection("clients").doc(id));
+    await batch.commit();
+    if(currentClientDetailId===id){currentClientDetailId=null; showTab("clients");}
+  }catch(e){ alert("⚠ تعذّر حذف العميل: "+(e.message||e)); }
 }
 function renderClients(){
   const host=document.getElementById("clientsList");
@@ -1451,11 +1529,12 @@ function renderClientDetail(id){
             ${v.complaint?' · '+v.complaint:''}</div>
           ${top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:''}
           ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed.ar}</b></div>`:''}
-          ${meds.length?`<div class="small">💊 ${meds.map(m=>`${m.drug}${m.response?' ('+(RESP_LABEL[m.response]||m.response)+')':''}`).join('، ')}</div>`:''}
+          ${meds.length?`<div class="small">💊 ${meds.map(m=>`${m.drug}${formatMedDose(m)?' — '+formatMedDose(m):''}${m.response?' ('+(RESP_LABEL[m.response]||m.response)+')':''}`).join('، ')}</div>`:''}
           ${v.opinion?`<div class="small">📝 ${v.opinion}</div>`:''}
           ${v.prescriptionUrl?`<div class="small">📎 <a href="${v.prescriptionUrl}" target="_blank">صورة الروشتة/التحاليل</a></div>`:''}
           <div class="row" style="margin-top:4px">
             <button class="btn sm" onclick="editVisit('${v.id}')">✏️ تعديل الزيارة</button>
+            ${(meds.length||v.opinion)?`<button class="btn sm" onclick="printSavedVisitPrescription('${v.id}')">🖨️ روشتة PDF</button>`:''}
             <button class="btn sm danger" onclick="deleteVisit('${v.id}')">🗑 حذف</button>
           </div>
         </div>`;
@@ -1473,27 +1552,39 @@ async function saveFlockEdit(id){
   const birdType=document.getElementById("ef_birdtype").value;
   const birdCountInitial=document.getElementById("ef_birdcount0").value?parseInt(document.getElementById("ef_birdcount0").value):null;
   const status=document.getElementById("ef_status").value;
-  await fs.collection("flocks").doc(id).update({houseName,placementDate,birdType,birdCountInitial,status});
-  editingFlockId=null;
+  try{
+    await fs.collection("flocks").doc(id).update({houseName,placementDate,birdType,birdCountInitial,status});
+    editingFlockId=null;
+  }catch(e){
+    alert("⚠ تعذّر حفظ تعديل الفوج: "+(e.message||e));
+  }
 }
 async function deleteFlock(id){
   const f=STATE.flocks.find(x=>x.id===id); if(!f)return;
   const visits=STATE.visits.filter(v=>v.flockId===id);
   if(!confirm(`تأكيد حذف الفوج (${f.flockCode}) وكل زياراته (${visits.length})؟ لا يمكن التراجع.`))return;
-  const batch=fs.batch();
-  visits.forEach(v=>batch.delete(fs.collection("visits").doc(v.id)));
-  batch.delete(fs.collection("flocks").doc(id));
-  await batch.commit();
+  try{
+    const batch=fs.batch();
+    visits.forEach(v=>batch.delete(fs.collection("visits").doc(v.id)));
+    batch.delete(fs.collection("flocks").doc(id));
+    await batch.commit();
+  }catch(e){ alert("⚠ تعذّر حذف الفوج: "+(e.message||e)); }
 }
 async function deleteVisit(id){
   if(!confirm("تأكيد حذف هذه الزيارة نهائيًا؟"))return;
-  await fs.collection("visits").doc(id).delete();
+  try{ await fs.collection("visits").doc(id).delete(); }
+  catch(e){ alert("⚠ تعذّر حذف الزيارة: "+(e.message||e)); }
 }
 async function closeFlock(flockId){
   if(!confirm("تأكيد إغلاق/تسويق هذا الفوج؟ أي زيارة جديدة لنفس العنبر ستُنشئ فوجًا جديدًا."))return;
-  await fs.collection("flocks").doc(flockId).update({status:"closed",closedAt:new Date().toISOString()});
+  try{ await fs.collection("flocks").doc(flockId).update({status:"closed",closedAt:new Date().toISOString()}); }
+  catch(e){ alert("⚠ تعذّر إغلاق الفوج: "+(e.message||e)); }
 }
-function printClientDetail(){ window.print(); }
+function printClientDetail(){
+  if(!currentClientDetailId){ alert("افتح ملف العميل أولاً من تبويب «العملاء» قبل الطباعة."); return; }
+  renderClientDetail(currentClientDetailId); // تحديث فوري لضمان إن التقرير مش هيطبع فاضي أو بيانات قديمة
+  window.print();
+}
 function exportVisitsToExcel(visits, label){
   if(!visits.length){alert("لا توجد زيارات لتصديرها.");return;}
   const rows=visits.map(v=>{
@@ -1627,7 +1718,7 @@ function renderPendingMedResponses(flockId){
   host.innerHTML=`<div class="banner warn">
     <b>💊 تقييم استجابة العلاج الموصوف في زيارة ${prevVisit.date}:</b>
     ${pending.map((m,i)=>`<div class="row" style="margin-top:6px">
-      <span class="small">${m.drug}${m.dose?' ('+m.dose+')':''}${m.diseaseId?' — '+dxName(m.diseaseId):''}</span>
+      <span class="small">${m.drug}${formatMedDose(m)?' ('+formatMedDose(m)+')':''}${m.diseaseId?' — '+dxName(m.diseaseId):''}</span>
       <select id="medresp_${i}" data-idx="${i}">
         <option value="">لم يُقيَّم بعد</option>
         <option value="excellent">استجابة ممتازة</option>
@@ -1639,22 +1730,54 @@ function renderPendingMedResponses(flockId){
   </div>`;
 }
 
-/* ---------------------- الأدوية الموصوفة (صفوف ديناميكية) ---------------------- */
+/* ---------------------- الأدوية الموصوفة (صفوف ديناميكية + أيام إعطاء) ---------------------- */
+const DAY_NAMES=["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
 let medCount=0;
 function addMedRow(){
   medCount++;
   const id="med"+medCount;
   const div=document.createElement("div");
-  div.className="serorow"; div.id=id; div.style.gridTemplateColumns="1.2fr 1fr 1.4fr auto";
+  div.className="medcard"; div.id=id;
   const diseaseOptions='<option value="">— بدون ربط بمرض —</option>'+
     DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("");
   div.innerHTML=`
-    <div class="field"><label>اسم الدواء</label><input class="m_drug" oninput="onMedRowInput('${id}')"></div>
-    <div class="field"><label>الجرعة</label><input class="m_dose"></div>
-    <div class="field"><label>مرتبط بمرض</label><select class="m_disease" onchange="onMedRowInput('${id}')">${diseaseOptions}</select></div>
-    <button class="btn sm danger" onclick="document.getElementById('${id}').remove()">حذف</button>
-    <div class="small m_note" style="grid-column:1/-1"></div>`;
+    <div class="grid2">
+      <div class="field"><label>اسم الدواء</label><input class="m_drug" oninput="onMedRowInput('${id}')"></div>
+      <div class="field"><label>مرتبط بمرض</label><select class="m_disease" onchange="onMedRowInput('${id}')">${diseaseOptions}</select></div>
+    </div>
+    <div class="grid3" style="margin-top:6px">
+      <div class="field"><label>الكمية</label><input class="m_amount" type="number" step="0.01" inputmode="decimal"></div>
+      <div class="field"><label>الوحدة</label>
+        <select class="m_unit"><option value="">—</option><option>جم</option><option>سم</option><option>كجم</option><option>مل</option><option>علبة</option></select></div>
+      <div class="field"><label>لكل</label>
+        <select class="m_per"><option value="">—</option><option>لتر ماء</option><option>كيلو عليقة</option><option>طن عليقة</option><option>طن مياه</option><option>رأس (حقن)</option></select></div>
+    </div>
+    <div class="grid3" style="margin-top:6px">
+      <div class="field"><label>التوقيت</label>
+        <select class="m_timing"><option value="">—</option><option>الصبح</option><option>الضهر</option><option>العصر</option><option>العشاء</option><option>طوال اليوم</option><option>جرعة واحدة</option></select></div>
+      <div class="field"><label>المدة (أيام)</label><input class="m_duration" type="number" min="1"></div>
+      <div class="field"><label>تفاصيل إضافية (اختياري)</label><input class="m_extra" placeholder="مثال: كل 8 ساعات"></div>
+    </div>
+    <div class="field" style="margin-top:6px"><label>أيام الإعطاء (اختياري — سيب فاضي يعني كل يوم)</label>
+      <div class="daypick">${DAY_NAMES.map((d,i)=>`<button type="button" class="daybtn" data-i="${i}" onclick="toggleMedDay('${id}',${i})">${d}</button>`).join("")}</div>
+    </div>
+    <div class="row" style="margin-top:8px;justify-content:space-between">
+      <div class="small m_note"></div>
+      <button class="btn sm danger" onclick="document.getElementById('${id}').remove()">🗑 حذف الدواء</button>
+    </div>`;
   document.getElementById("medRows").appendChild(div);
+}
+function toggleMedDay(rowId,i){
+  const row=document.getElementById(rowId); if(!row)return;
+  const btn=row.querySelector(`.daybtn[data-i="${i}"]`);
+  btn.classList.toggle("on");
+}
+function setMedDays(rowId,days){
+  const row=document.getElementById(rowId); if(!row)return;
+  (days||[]).forEach(i=>{ const btn=row.querySelector(`.daybtn[data-i="${i}"]`); if(btn)btn.classList.add("on"); });
+}
+function getMedDays(row){
+  return [...row.querySelectorAll(".daybtn.on")].map(b=>parseInt(b.dataset.i));
 }
 function onMedRowInput(rowId){
   const row=document.getElementById(rowId); if(!row)return;
@@ -1673,10 +1796,25 @@ function onMedRowInput(rowId){
     note.style.color="var(--ok)";
   }
 }
+/* بيبني نص الجرعة المطبوع من الحقول المنظّمة، مع التوافق مع بيانات قديمة كانت متسجّلة كنص حر في dose */
+function formatMedDose(m){
+  if(m.amount||m.unit||m.per){
+    let s=`${m.amount||''} ${m.unit||''}`.trim();
+    if(m.per) s+= (s?' / ':'')+m.per;
+    return s.trim();
+  }
+  return m.dose||"";
+}
 function collectMeds(){
-  return [...document.querySelectorAll("#medRows .serorow")].map(r=>({
+  return [...document.querySelectorAll("#medRows .medcard")].map(r=>({
     drug:r.querySelector(".m_drug").value.trim(),
-    dose:r.querySelector(".m_dose").value.trim(),
+    amount:r.querySelector(".m_amount").value.trim(),
+    unit:r.querySelector(".m_unit").value,
+    per:r.querySelector(".m_per").value,
+    timing:r.querySelector(".m_timing").value,
+    duration:r.querySelector(".m_duration").value.trim(),
+    extra:r.querySelector(".m_extra").value.trim(),
+    days:getMedDays(r),
     diseaseId:r.querySelector(".m_disease").value,
     response:""
   })).filter(m=>m.drug);
@@ -1776,11 +1914,27 @@ function genFlockCode(client,houseName,placementDate){
   return `${initials}-${(houseName||"H").replace(/\s+/g,"")}-${placementDate}`;
 }
 let editingVisitId=null;
+let savingVisit=false;
 async function saveVisit(){
+  if(savingVisit) return; // يمنع تكرار الحفظ لو المستخدم ضغط زر الحفظ أكتر من مرة (شبكة بطيئة مثلاً)
   const clientId=document.getElementById("nv_client").value;
   if(!clientId){alert("اختر العميل أولاً.");return;}
   const date=document.getElementById("nv_date").value;
   if(!date){alert("حدد تاريخ الزيارة.");return;}
+  savingVisit=true;
+  const btn=document.getElementById("btnSaveVisit");
+  if(btn){btn.disabled=true; btn.textContent="⏳ جارِ الحفظ…";}
+  try{
+    await saveVisitInner(clientId,date);
+  }catch(e){
+    alert("⚠ حدث خطأ ولم يتم الحفظ: "+(e.message||e)+"\nمن فضلك تأكد من الاتصال بالإنترنت وحاول تاني، ولا تضغط حفظ مرتين.");
+    document.getElementById("saveMsg").textContent="";
+  }finally{
+    savingVisit=false;
+    if(btn){btn.disabled=false; btn.textContent="حفظ الزيارة/المتابعة";}
+  }
+}
+async function saveVisitInner(clientId,date){
   const house=document.getElementById("nv_house").value.trim();
   const age=document.getElementById("nv_age").value?parseInt(document.getElementById("nv_age").value):null;
   const birdCount=document.getElementById("nv_birdcount").value?parseInt(document.getElementById("nv_birdcount").value):null;
@@ -1944,8 +2098,14 @@ function editVisit(id){
     const row=document.getElementById("medRows").lastElementChild;
     if(row){
       row.querySelector(".m_drug").value=m.drug||"";
-      row.querySelector(".m_dose").value=m.dose||"";
+      row.querySelector(".m_amount").value=m.amount||"";
+      row.querySelector(".m_unit").value=m.unit||"";
+      row.querySelector(".m_per").value=m.per||"";
+      row.querySelector(".m_timing").value=m.timing||"";
+      row.querySelector(".m_duration").value=m.duration||"";
+      row.querySelector(".m_extra").value=m.extra|| (!m.amount&&!m.unit&&m.dose? m.dose:"") ||""; // توافق مع بيانات قديمة كانت جرعتها نص حر بس
       if(m.diseaseId)row.querySelector(".m_disease").value=m.diseaseId;
+      if(m.days&&m.days.length)setMedDays(row.id,m.days);
     }
   });
   document.getElementById("pendingMedResponses").innerHTML="";
