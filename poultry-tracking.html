@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>نظام متابعة العملاء والأفواج — مركز د. السيد الغمري</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Firebase (نفس أسلوب البرنامج المحاسبي، لكن مشروع منفصل خاص بالعيادة) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --ink:#12312E;--ink-2:#1C4A44;--surface:#EDF1EF;--card:#FFFFFF;--line:#D6DEDB;
+    --muted:#5C6B66;--accent:#C2410C;--gold:#B7791F;--ok:#1f7a4d;--warn:#B7791F;
+    --radius:12px;--font:"Cairo","Segoe UI",Tahoma,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font);background:var(--surface);color:var(--ink);line-height:1.6}
+  header{background:linear-gradient(135deg,var(--ink),var(--ink-2));color:#EAF2EF;padding:16px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:1.05rem;margin:0}
+  header .sub{font-size:.76rem;opacity:.85}
+  header .spacer{margin-inline-start:auto}
+  .badge{font-size:.72rem;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);padding:4px 10px;border-radius:999px}
+  .btn{font-family:var(--font);font-size:.86rem;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer}
+  .btn:hover{background:#F0F4F3}
+  .btn.pri{background:var(--ink);color:#fff}.btn.pri:hover{background:var(--ink-2)}
+  .btn.sm{padding:5px 10px;font-size:.78rem}
+  .btn.danger{color:var(--accent);border-color:#E7C4B8}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  .tabs{display:flex;gap:4px;padding:10px 22px 0;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .tab{border:none;background:none;padding:10px 16px;font-family:var(--font);font-size:.88rem;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer}
+  .tab.active{color:var(--ink);border-color:var(--ink-2);font-weight:700}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px 16px 80px}
+  .panel{display:none}.panel.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
+  .card h2,.card h3{margin-top:0;color:var(--ink);font-size:1rem}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  @media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
+  .field label{display:block;font-size:.74rem;color:var(--muted);font-weight:600;margin-bottom:3px}
+  .field input,.field select,.field textarea{width:100%;font-family:var(--font);font-size:.9rem;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  .field textarea{min-height:60px;resize:vertical}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}
+  .hint{font-size:.78rem;color:var(--muted);line-height:1.6}
+  .divider{border:0;border-top:1px solid var(--line);margin:14px 0}
+
+  .clientitem,.flockitem,.visititem{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;background:#fff}
+  .clientitem{cursor:pointer}
+  .clientitem:hover{background:#F7FAF9}
+  .ci-t{font-weight:700;font-size:.92rem}
+  .ci-s{font-size:.76rem;color:var(--muted);margin-top:2px}
+  .chip{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-inline-end:4px}
+  .chip.visit{background:#E9F1FE;color:#1D4E89}
+  .chip.monitor{background:#EAF5EE;color:var(--ok)}
+  .chip.open{background:#FBF3E6;color:#7A5A12}
+  .chip.closed{background:#EFEFEF;color:#666}
+  .chip.warn{background:#FDECEA;color:#B3261E}
+
+  .banner{padding:10px 12px;border-radius:9px;font-size:.85rem;margin:8px 0;border:1px solid var(--line)}
+  .banner.match{background:#EAF5EE;border-color:#BFE3CC;color:#155724}
+  .banner.new{background:#FBF3E6;border-color:#E7CF9E;color:#6B5420}
+  .banner.warn{background:#FDECEA;border-color:#F1B0AA;color:#8A241D}
+
+  .loginwrap{max-width:360px;margin:80px auto;padding:24px;background:#fff;border:1px solid var(--line);border-radius:var(--radius)}
+  .loginwrap h2{margin-top:0;text-align:center}
+  #app{display:none}
+  .serorow{display:grid;grid-template-columns:1.2fr 1fr .7fr .7fr .7fr auto;gap:6px;margin-bottom:6px;align-items:end}
+  @media(max-width:800px){.serorow{grid-template-columns:1fr 1fr}}
+  .small{font-size:.76rem;color:var(--muted)}
+  .backlink{font-size:.82rem;color:var(--ink-2);cursor:pointer;text-decoration:underline}
+
+  /* ---- Organ / lesion picker (ported from Field Assistant) ---- */
+  .dxpanel{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:8px}
+  .dxsearch{padding:8px 10px;border-bottom:1px solid var(--line);background:#F7FAF9}
+  .dxsearch input{width:100%;font-family:var(--font);font-size:.85rem;padding:7px 10px;border:1px solid var(--line);border-radius:8px}
+  .dxquick{padding:7px 10px;border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#F7FAF9}
+  .dxquick .lbl{font-size:.72rem;color:var(--muted);font-weight:600}
+  .qbtn{font-family:var(--font);font-size:.74rem;padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  .qbtn:hover{background:var(--ink);color:#fff}
+  .organ{border-bottom:1px solid var(--line)}
+  .organ:last-child{border-bottom:0}
+  .organ-h{width:100%;text-align:start;background:none;border:0;cursor:pointer;padding:10px 12px;display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:.86rem;font-weight:600;color:var(--ink)}
+  .organ-h:hover{background:#F4F7F6}
+  .organ-h .chev{margin-inline-start:auto;transition:transform .2s;color:var(--muted)}
+  .organ.open .chev{transform:rotate(90deg)}
+  .organ-h .cnt{font-size:.68rem;background:var(--ink);color:#fff;border-radius:999px;padding:1px 8px;display:none}
+  .organ-h .cnt.on{display:inline-block}
+  .les-list{display:none;padding:2px 6px 10px;columns:2;column-gap:6px}
+  @media(max-width:640px){.les-list{columns:1}}
+  .organ.open .les-list{display:block}
+  .les{display:flex;align-items:flex-start;gap:6px;padding:5px 8px;border-radius:8px;break-inside:avoid;cursor:pointer}
+  .les:hover{background:#F4F7F6}
+  .les input{margin-top:3px;width:15px;height:15px;accent-color:var(--ink)}
+  .les .txt{font-size:.82rem}
+  .les .txt .le{display:block;font-size:.68rem;color:var(--muted)}
+  .les.hit{background:#FBF4EC}
+  .les.on{background:#F1F6F4}
+
+  .prime{padding:14px;border-radius:10px;background:linear-gradient(135deg,var(--ink),var(--ink-2));color:#EAF2EF;margin:10px 0}
+  .prime .tag{display:inline-block;font-size:.66rem;font-weight:700;background:var(--accent);color:#fff;padding:2px 9px;border-radius:999px}
+  .prime .dz{font-size:1.12rem;font-weight:800;margin:8px 0 2px}
+  .prime .dz .en{font-size:.7rem;opacity:.8;font-weight:600}
+  .prime .conf{font-size:.76rem;opacity:.9;margin-top:3px}
+  .prime .test{margin-top:8px;font-size:.8rem;background:rgba(255,255,255,.1);border-radius:8px;padding:8px 10px}
+  .prime .gap{margin-top:6px;font-size:.72rem;opacity:.85}
+  .comp{margin:8px 0;padding:11px 12px;border-radius:10px;background:#FBF3E6;border:1px solid #E7CF9E;border-inline-start:4px solid var(--gold)}
+  .comp .ct{font-size:.64rem;font-weight:700;background:var(--gold);color:#fff;padding:2px 8px;border-radius:999px}
+  .comp .cn{font-size:.94rem;font-weight:800;color:#7A5A12;margin:6px 0 2px}
+  .comp .cnote{font-size:.76rem;color:#4A3B15;margin-top:5px}
+  .rank{max-height:50vh;overflow:auto;margin-top:8px}
+  .cand{padding:8px 8px;border-radius:9px;cursor:pointer;border:1px solid transparent}
+  .cand:hover{background:#F4F7F6}
+  .cand.lead{border-color:var(--line)}
+  .cand .row{display:flex;align-items:center;gap:8px}
+  .cand .nm{font-size:.84rem;font-weight:600}
+  .cand .nm .en{font-size:.66rem;color:var(--muted);font-weight:500}
+  .cand .pct{margin-inline-start:auto;font-size:.8rem;font-weight:700}
+  .cand .agewarn{font-size:.64rem;color:var(--warn);margin-inline-start:6px}
+  .track{height:7px;background:#E6ECEA;border-radius:6px;margin-top:5px;overflow:hidden}
+  .fill{height:100%;background:var(--ink-2);border-radius:6px}
+  .cand.lead .fill{background:var(--ink)}
+  .why{display:none;margin-top:6px;padding:7px 9px;background:#F4F7F6;border-radius:8px;font-size:.76rem}
+  .cand.exp .why{display:block}
+  .dxempty{padding:16px;text-align:center;color:var(--muted);font-size:.84rem}
+</style>
+</head>
+<body>
+
+<div class="loginwrap" id="loginBox">
+  <h2>مركز د. السيد الغمري<br><span style="font-size:.8rem;color:var(--muted)">نظام متابعة العملاء والأفواج</span></h2>
+  <div class="field"><label>البريد الإلكتروني</label><input id="loginEmail" type="email"></div>
+  <div class="field" style="margin-top:8px"><label>كلمة المرور</label><input id="loginPass" type="password"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn pri" style="width:100%" onclick="doLogin()">دخول</button>
+  </div>
+  <p id="loginErr" class="hint" style="color:var(--accent)"></p>
+</div>
+
+<div id="app">
+<header>
+  <div><h1>نظام متابعة العملاء والأفواج</h1><div class="sub">مركز د. السيد الغمري لاستشارات وأمراض الدواجن</div></div>
+  <div class="spacer"></div>
+  <span class="badge" id="userBadge"></span>
+  <button class="btn" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.4)" onclick="doLogout()">خروج</button>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-tab="clients" onclick="showTab('clients')">👥 العملاء</button>
+  <button class="tab" data-tab="newvisit" onclick="showTab('newvisit')">➕ تسجيل زيارة/متابعة</button>
+  <button class="tab" data-tab="openflocks" onclick="showTab('openflocks')">🐔 الأفواج المفتوحة</button>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ TAB: CLIENTS ============ -->
+  <div class="panel active" id="tab-clients">
+    <div class="card">
+      <h2>إضافة عميل جديد</h2>
+      <div class="grid3">
+        <div class="field"><label>اسم العميل / المزرعة</label><input id="cl_name"></div>
+        <div class="field"><label>الهاتف</label><input id="cl_phone"></div>
+        <div class="field"><label>العنوان</label><input id="cl_address"></div>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div class="field"><label>نوع التعامل</label>
+          <select id="cl_type"><option value="visit">عميل زيارة</option><option value="monitoring">عميل متابعة (Batch Tracking)</option></select></div>
+        <div class="field"><label>نوع الطائر الأساسي</label>
+          <select id="cl_birdtype">
+            <option value="broiler">تسمين (دورة 45 يوم)</option>
+            <option value="sasso">ساسو (دورة 60-70 يوم)</option>
+            <option value="baladi">بلدي (دورة 90 يوم)</option>
+            <option value="layer">بياض (زيارات مرتبطة)</option>
+            <option value="breeder">أمهات (تربية + إنتاج)</option>
+          </select></div>
+        <div class="field" style="align-self:end"><button class="btn pri" style="width:100%" onclick="addClient()">حفظ العميل</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>قائمة العملاء <span class="small" id="clientCount"></span></h2>
+      <div class="field"><input id="clientSearch" placeholder="ابحث بالاسم…" oninput="renderClients()"></div>
+      <div id="clientsList"></div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: NEW VISIT / MONITORING ENTRY ============ -->
+  <div class="panel" id="tab-newvisit">
+    <div class="card">
+      <h2>تسجيل زيارة / نقطة متابعة جديدة</h2>
+      <div class="grid2">
+        <div class="field"><label>العميل</label>
+          <select id="nv_client" onchange="onClientChangeForVisit()"><option value="">— اختر العميل —</option></select></div>
+        <div class="field"><label>اسم العنبر / الموقع</label><input id="nv_house" placeholder="مثال: عنبر 1" oninput="checkFlockMatch()"></div>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div class="field"><label>تاريخ الزيارة</label><input id="nv_date" type="date" onchange="checkFlockMatch()"></div>
+        <div class="field"><label>عمر الفوج (يوم)</label><input id="nv_age" type="number" min="0" oninput="checkFlockMatch()"></div>
+        <div class="field"><label>عدد الطيور الحالي</label><input id="nv_birdcount" type="number" min="1" oninput="checkFlockMatch()"></div>
+      </div>
+      <div id="flockMatchBanner"></div>
+
+      <div id="newFlockFields" style="display:none">
+        <hr class="divider">
+        <h3>بيانات الفوج الجديد</h3>
+        <div class="grid3">
+          <div class="field"><label>تاريخ التحميل (Placement Date)</label><input id="nf_placement" type="date"></div>
+          <div class="field"><label>نوع الطائر</label>
+            <select id="nf_birdtype">
+              <option value="broiler">تسمين (45 يوم)</option>
+              <option value="sasso">ساسو (60-70 يوم)</option>
+              <option value="baladi">بلدي (90 يوم)</option>
+              <option value="layer">بياض</option>
+              <option value="breeder">أمهات</option>
+            </select></div>
+          <div class="field"><label>عدد الطيور الابتدائي</label><input id="nf_birdcount0" type="number" min="1"></div>
+        </div>
+      </div>
+
+      <hr class="divider">
+      <h3>بيانات الزيارة / الحالة</h3>
+      <div class="grid3">
+        <div class="field"><label>الشكوى الرئيسية</label><input id="v_complaint"></div>
+        <div class="field"><label>النفوق اليومي %</label><input id="v_mortd" inputmode="decimal"></div>
+        <div class="field"><label>النفوق التراكمي %</label><input id="v_mortc" inputmode="decimal"></div>
+        <div class="field"><label>استهلاك العلف</label>
+          <select id="v_feed"><option value="">—</option><option>طبيعي</option><option>منخفض</option><option>متوقف</option></select></div>
+        <div class="field"><label>نسبة الإنتاج % (بياض/أمهات)</label><input id="v_prod" inputmode="decimal"></div>
+        <div class="field"><label>آخر تحصين</label><input id="v_vacc"></div>
+      </div>
+      <hr class="divider">
+      <h3>التشريح والتشخيص التفاضلي</h3>
+      <div class="grid2">
+        <div class="field"><label>عدد الطيور المشرّحة</label><input id="dx_nbirds" type="number" min="1" max="50" value="5"></div>
+        <div class="field"><label class="small">علّم على الآفات المشاهَدة أدناه؛ سيظهر التشخيص المرجّح تلقائيًا.</label></div>
+      </div>
+      <div class="dxpanel">
+        <div class="dxsearch"><input id="dxsearch" placeholder="ابحث عن آفة… (عربي/English)" oninput="dxFilter(this.value)"></div>
+        <div class="dxquick">
+          <span class="lbl">فتح سريع:</span>
+          <button type="button" class="qbtn" onclick="dxJumpOrgan('lv')">الكبد</button>
+          <button type="button" class="qbtn" onclick="dxJumpOrgan('tr')">القصبة</button>
+          <button type="button" class="qbtn" onclick="dxJumpOrgan('ji')">الأمعاء</button>
+          <button type="button" class="qbtn" onclick="dxJumpOrgan('kd')">الكلى</button>
+          <button type="button" class="qbtn" onclick="dxExpandAll()">فتح الكل</button>
+          <button type="button" class="qbtn" onclick="dxCollapseAll()">طي الكل</button>
+        </div>
+        <div id="dxOrgans"></div>
+      </div>
+      <div id="dxResults"></div>
+      <div class="field" style="margin-top:8px"><label>رأي الطبيب والخلاصة</label><textarea id="v_opinion" placeholder="خلاصة الطبيب وتطوّر الحالة، بالإضافة للتشخيص المرجّح تلقائيًا أعلاه…"></textarea></div>
+
+      <hr class="divider">
+      <h3>الفحص الفني للمزرعة (اختياري)</h3>
+      <div class="grid3">
+        <div class="field"><label>نظام التهوية</label>
+          <select id="fi_vent"><option value="">—</option><option>نفقي</option><option>عرضي</option><option>طبيعي</option><option>غير كافٍ</option></select></div>
+        <div class="field"><label>الأمونيا (ppm)</label><input id="fi_ammonia" inputmode="decimal"></div>
+        <div class="field"><label>رطوبة الفرشة %</label><input id="fi_litter" inputmode="decimal"></div>
+        <div class="field"><label>الكثافة (طائر/م²)</label><input id="fi_density" inputmode="decimal"></div>
+        <div class="field"><label>جودة المياه (pH)</label><input id="fi_ph" inputmode="decimal"></div>
+        <div class="field"><label>الأمن الحيوي العام</label>
+          <select id="fi_biosec"><option value="">—</option><option>ممتاز</option><option>مقبول</option><option>ضعيف</option></select></div>
+      </div>
+
+      <hr class="divider">
+      <h3>نتائج سيرولوجية (اختياري)</h3>
+      <div id="seroRows"></div>
+      <button class="btn sm" onclick="addSeroRow()">+ إضافة نتيجة سيرولوجية</button>
+
+      <hr class="divider">
+      <div class="row">
+        <button class="btn pri" onclick="saveVisit()">حفظ الزيارة/المتابعة</button>
+        <span id="saveMsg" class="hint"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: OPEN FLOCKS ============ -->
+  <div class="panel" id="tab-openflocks">
+    <div class="card">
+      <h2>الأفواج المفتوحة حاليًا</h2>
+      <div id="openFlocksList"></div>
+    </div>
+  </div>
+
+  <!-- ============ CLIENT DETAIL (overlay panel) ============ -->
+  <div class="panel" id="tab-clientdetail">
+    <div class="card">
+      <span class="backlink" onclick="showTab('clients')">→ رجوع لقائمة العملاء</span>
+      <h2 id="cd_name"></h2>
+      <div class="hint" id="cd_meta"></div>
+      <hr class="divider">
+      <h3>الأفواج</h3>
+      <div id="cd_flocks"></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+/* ==========================================================================
+   ⚠️ إعداد Firebase - خطوة إلزامية قبل التشغيل ⚠️
+   أنشئ مشروع Firebase منفصل خاص بالعيادة (مختلف عن مشروع الحسابات)
+   ثم استبدل القيم أدناه من: Project Settings → General → Your apps → Web app
+   فعّل Firestore + Authentication (Email/Password) في نفس المشروع.
+   ========================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDBbmC4v92wNwYfAEmHf3CBrM8qTTJEVXI",
+  authDomain: "elghamry-poultry-clinic.firebaseapp.com",
+  projectId: "elghamry-poultry-clinic",
+  storageBucket: "elghamry-poultry-clinic.firebasestorage.app",
+  messagingSenderId: "52568616017",
+  appId: "1:52568616017:web:584fefd5a2ed40ab6a9c70"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const fs = firebase.firestore();
+try{ fs.enablePersistence({synchronizeTabs:true}); }catch(e){}
+
+const CYCLE_DAYS = { broiler:45, sasso:68, baladi:90, layer:null, breeder:null };
+const BIRD_LABEL = { broiler:"تسمين", sasso:"ساسو", baladi:"بلدي", layer:"بياض", breeder:"أمهات" };
+const TOLERANCE_DAYS = 7;       // فرق مسموح به بين تاريخ التحميل المفترض والفعلي
+const BIRDCOUNT_TOLERANCE = 0.25; // نسبة فرق العدد المسموح بها قبل الاشتباه في فوج مختلف
+
+
+/* ============ Diagnostic knowledge base (ported from Field Assistant tool) ============ */
+const ORGANS = [
+  {id:"cs", ar:"الأعراض الإكلينيكية والتنفسية"},
+  {id:"hd", ar:"الرأس والعين والوجه"},
+  {id:"nb", ar:"الأنف والمنقار"},
+  {id:"sk", ar:"الريش والجلد"},
+  {id:"lg", ar:"الأرجل والمفاصل (ظاهري)"},
+  {id:"cc", ar:"حالة الذبيحة واللحم"},
+  {id:"cn", ar:"الجفاف والدهون والاستسقاء"},
+  {id:"tr", ar:"القصبة الهوائية"},
+  {id:"ln", ar:"الرئتان"},
+  {id:"as", ar:"الأكياس الهوائية"},
+  {id:"ht", ar:"القلب"},
+  {id:"lv", ar:"الكبد"},
+  {id:"gb", ar:"المرارة"},
+  {id:"sp", ar:"الطحال"},
+  {id:"bu", ar:"جراب فابريشيوس (البورسا)"},
+  {id:"th", ar:"التيموس"},
+  {id:"kd", ar:"الكلى"},
+  {id:"ur", ar:"الحالبين"},
+  {id:"pv", ar:"المعدة الغدية (البروفنتريكولس)"},
+  {id:"gz", ar:"القونصة (الجيزارد)"},
+  {id:"pn", ar:"البنكرياس"},
+  {id:"du", ar:"الإثني عشر"},
+  {id:"ji", ar:"الأمعاء (الصائم/اللفائفي)"},
+  {id:"ce", ar:"الأعورين"},
+  {id:"ct", ar:"اللوزتين المعويتين"},
+  {id:"bm", ar:"عضلة الصدر"},
+  {id:"tm", ar:"عضلة الفخذ"},
+  {id:"hj", ar:"مفصل العرقوب"},
+  {id:"fh", ar:"رأس الفخذ والعظام"},
+  {id:"nv", ar:"الأعصاب"},
+  {id:"ov", ar:"المبيض"},
+  {id:"od", ar:"قناة البيض"},
+  {id:"ts", ar:"الخصية (الذكور)"},
+  {id:"pt", ar:"التجويف البطني والغشاء البريتوني"},
+  {id:"nt", ar:"علامات نقص التغذية والرعاية"}
+];
+
+const LESIONS = [
+  ["cs_sneezing","cs","عطس","Sneezing"],
+  ["cs_cough","cs","سعال / كحة","Coughing"],
+  ["cs_nasal_discharge","cs","إفرازات مخاطية من الأنف","Nasal mucous discharge"],
+  ["cs_dyspnea","cs","صعوبة تنفس / لهاث / فتح المنقار","Dyspnea / gasping"],
+  ["cs_rales","cs","خرخرة / صفير بالصدر","Respiratory rales / snicking"],
+  ["cs_diarrhea","cs","إسهال","Diarrhea"],
+  ["cs_greenish_diarrhea","cs","إسهال أخضر","Greenish diarrhea"],
+  ["cs_white_diarrhea","cs","إسهال أبيض جيري","White pasty diarrhea"],
+  ["cs_white_watery","cs","إسهال أبيض مائي","Watery white diarrhea"],
+  ["cs_sulfur_yellow","cs","إسهال أصفر كبريتي","Sulfur-yellow diarrhea"],
+  ["cs_egg_quality","cs","بيض رديء/مشوّه (قشرة رقيقة أو طرية، ألبومين مائي)","Poor / abnormal egg quality"],
+  ["cs_shell_color_loss","cs","فقدان لون قشرة البيض","Loss of eggshell pigmentation"],
+  ["cs_foul_odor","cs","رائحة كريهة (حالات مزمنة/مختلطة)","Foul odor (chronic/mixed infections)"],
+  ["cs_nervous","cs","أعراض عصبية (التواء رقبة / شلل)","Nervous signs"],
+  ["cs_drop_production","cs","هبوط إنتاج البيض","Drop in egg production"],
+  ["cs_sudden_death","cs","نفوق مفاجئ في طيور بحالة جيدة","Sudden death, good condition"],
+  ["cs_leg_paralysis","cs","ضعف/شلل بالأرجل (ثنائي، مراحل متأخرة)","Bilateral leg weakness/paralysis (late stage)"],
+  ["cs_leukocytosis","cs","كثرة الكريات البيضاء (تحليل دم)","Leukocytosis (blood analysis)"],
+
+  ["hd_cyanosis","hd","زرقة العرف والداليتين","Cyanosis of comb/wattles"],
+  ["hd_wattle_swelling","hd","تورم الداليات (خصوصاً الذكور)","Swollen wattles (especially males)"],
+  ["hd_pale_comb","hd","شحوب العرف","Pale comb"],
+  ["hd_facial_edema","hd","تورم الوجه والرأس (وذمة)","Facial / head edema"],
+  ["hd_ocular_catarrh","hd","مخاط / إفراز بالعين","Ocular catarrhal exudate"],
+  ["hd_conjunctivitis","hd","التهاب ملتحمة","Conjunctivitis"],
+  ["hd_ocular_froth","hd","رغوة بالعين","Foamy eyes"],
+  ["hd_grey_eye","hd","قزحية رمادية / التهاب قزحية غير منتظم (Grey Eye)","Grey eye / irregular iris (lymphoid infiltration)"],
+  ["hd_fungal_eye","hd","إفراز جبني تحت الغشاء الرامش / عكارة قرنية (فطري)","Caseous plaque under nictitating membrane / corneal opacity"],
+
+  ["nb_blockage","nb","انسداد الأنف","Nasal blockage"],
+  ["nb_oral_ulcers","nb","تقرحات/بثور بالفم والمنقار (حرق كيميائي)","Oral/beak ulcers (chemical burn)"],
+  ["nb_caseous","nb","تجبن بالجيوب الأنفية","Caseous sinus exudate"],
+  ["nb_sinusitis","nb","التهاب / تورم الجيوب الأنفية","Sinusitis"],
+
+  ["sk_pox","sk","عقيدات / قشور جدرية على العرف والوجه","Pox nodules / scabs"],
+  ["sk_wounds","sk","جروح / آفات جلدية","Wounds / skin lesions"],
+  ["sk_ectoparasites","sk","طفيليات خارجية","Ectoparasites"],
+  ["sk_ruffled","sk","ريش منفوش","Ruffled feathers"],
+  ["sk_cellulitis","sk","سيلوليت / التهاب النسيج تحت الجلد","Cellulitis"],
+
+  ["lg_footpad","lg","تقرح وسادة القدم","Footpad dermatitis"],
+  ["lg_lameness","lg","عرج (غالباً من رجل واحدة)","Lameness (often unilateral)"],
+  ["lg_joint_swelling","lg","تورم المفاصل","Joint swelling"],
+  ["lg_scales","lg","قشور بالأرجل","Leg scales"],
+
+  ["cc_anemic","cc","شحوب / أنيميا الذبيحة","Anemic carcass"],
+  ["cc_icteric","cc","يرقان الجلد والدهن تحت الجلد","Icterus of skin / subcutaneous fat"],
+  ["cc_cyanotic","cc","ازرقاق الذبيحة","Cyanotic carcass"],
+  ["cc_congested","cc","احتقان / محموم","Feverish / congested"],
+
+  ["cn_ascites","cn","استسقاء بطني","Ascites"],
+  ["cn_wasting","cn","هزال وضياع الدهون","Muscle wasting"],
+  ["cn_dehydration","cn","جفاف شديد","Dehydration"],
+
+  ["tr_caseous_plug","tr","سدادة جبنية بالقصبة","Caseous plug"],
+  ["tr_bifurcation","tr","سدادة جبنية عند التفرع فقط","Caseous plug at bifurcation"],
+  ["tr_congestion","tr","احتقان قصبي","Tracheal congestion"],
+  ["tr_hemorrhage","tr","نزف قصبي / سدادات دموية","Tracheal hemorrhage / blood plugs"],
+  ["tr_catarrh","tr","مخاط / إفراز نزلي","Catarrhal exudate"],
+  ["tr_thickened","tr","سماكة الغشاء المخاطي","Thickened mucosa"],
+  ["tr_fibrin","tr","إفراز فيبريني / غشاء خناقي","Fibrinous / diphtheritic exudate"],
+
+  ["ln_congestion","ln","احتقان رئوي","Congestion"],
+  ["ln_pneumonia","ln","التهاب رئوي","Pneumonia"],
+  ["ln_edema","ln","وذمة رئوية","Edema"],
+  ["ln_hemorrhage","ln","نزف رئوي","Hemorrhage"],
+  ["ln_consolidation","ln","تصلّب / تجمّد رئوي","Consolidation"],
+  ["ln_necrotic_foci","ln","بؤر نخر رئوية","Necrotic foci"],
+  ["ln_fungal","ln","عقيدات فطرية بالرئة","Fungal nodules"],
+
+  ["as_cloudiness","as","عكارة الأكياس","Cloudiness"],
+  ["as_thickening","as","سماكة الأكياس","Thickening"],
+  ["as_foamy","as","إفراز رغوي","Foamy exudate"],
+  ["as_yellow_caseous","as","إفراز جبني أصفر","Yellow caseous exudate"],
+  ["as_adhesions","as","التصاقات","Adhesions"],
+  ["as_sacculitis","as","التهاب أكياس هوائية","Air sacculitis"],
+
+  ["ht_pericarditis","ht","التهاب تامور فيبريني","Fibrinous pericarditis"],
+  ["ht_myocarditis","ht","التهاب عضلة القلب","Myocarditis"],
+  ["ht_hydropericardium","ht","استسقاء التامور","Hydropericardium"],
+  ["ht_fibrin","ht","ترسب فيبرين على القلب","Fibrin deposition"],
+  ["ht_hemorrhage","ht","نزف نقطي على الدهن التاجي","Coronary petechiae"],
+  ["ht_enlargement","ht","تضخم القلب","Cardiac enlargement"],
+  ["ht_nodules","ht","عقيدات نخرية بيضاء بعضلة القلب","White necrotic nodules in myocardium"],
+
+  ["lv_hepatomegaly","lv","تضخم الكبد","Hepatomegaly"],
+  ["lv_bronze","lv","لون برونزي","Bronze discoloration"],
+  ["lv_green","lv","لون أخضر","Green discoloration"],
+  ["lv_white_spots","lv","نقط / بؤر بيضاء دبوسية","White spots (pinpoint)"],
+  ["lv_necrotic_foci","lv","بؤر نخر","Necrotic foci"],
+  ["lv_target","lv","بؤر نخر دائرية شبه الهدف","Target-like circular necrosis"],
+  ["lv_perihep","lv","غشاء فيبريني (perihepatitis)","Fibrin / perihepatitis"],
+  ["lv_hepatitis","lv","التهاب كبد","Hepatitis"],
+  ["lv_fatty","lv","كبد دهني","Fatty liver"],
+  ["lv_hemorrhage","lv","نزف كبدي","Hemorrhage"],
+  ["lv_tumors","lv","أورام / عقيدات ورمية","Tumors"],
+  ["lv_rupture","lv","تمزق الكبد","Rupture"],
+  ["lv_atrophy","lv","ضمور الكبد","Atrophy"],
+  ["lv_bile_duct","lv","تكاثر القنوات الصفراوية","Bile duct proliferation/hyperplasia"],
+  ["lv_congestion","lv","احتقان الكبد","Congestion"],
+
+  ["gb_enlarged","gb","مرارة متضخمة / ممتلئة","Enlarged / distended"],
+  ["gb_thick","gb","سماكة جدار المرارة","Thickened wall"],
+  ["gb_dark_bile","gb","عصارة صفراوية داكنة","Dark bile"],
+  ["gb_empty","gb","مرارة فارغة","Empty"],
+
+  ["sp_enlarged","sp","تضخم الطحال","Splenomegaly"],
+  ["sp_mottled","sp","ترقيط الطحال","Mottled appearance"],
+  ["sp_necrotic","sp","بؤر نخر بالطحال","Necrotic foci"],
+  ["sp_hemorrhage","sp","نزف الطحال","Hemorrhage"],
+  ["sp_white_necrotic","sp","بؤر نخر بيضاء بالطحال","White necrotic foci"],
+  ["sp_necro_hrg","sp","نخر ونزف بالطحال (necro-haemorrhagic)","Necro-haemorrhagic spleen"],
+  ["sp_congested","sp","احتقان الطحال","Congested"],
+  ["sp_tumors","sp","أورام بالطحال","Tumors"],
+  ["sp_atrophied","sp","ضمور الطحال","Atrophied"],
+  ["sp_marbled_huge","sp","تضخم طحال شديد وغير طبيعي مع ترقيط رخامي","Markedly enlarged, marbled/mottled spleen"],
+
+  ["bu_enlarged","bu","بورسا متضخمة","Enlarged bursa"],
+  ["bu_hemorrhage","bu","نزف بالبورسا","Hemorrhagic bursa"],
+  ["bu_edematous","bu","بورسا وذمية","Edematous"],
+  ["bu_gelatinous","bu","إفراز جيلاتيني","Gelatinous exudate"],
+  ["bu_caseous","bu","سدادة جبنية بالبورسا","Caseous core"],
+  ["bu_atrophied","bu","ضمور البورسا","Atrophied"],
+  ["bu_tumor","bu","ورم/كتلة بالبورسا","Bursal tumor mass"],
+  ["bu_necrosis","bu","نخر البورسا","Necrosis"],
+
+  ["th_hemorrhage","th","نزف التيموس","Thymic hemorrhage"],
+  ["th_atrophied","th","ضمور التيموس","Atrophied"],
+  ["th_enlarged","th","تضخم التيموس","Enlarged"],
+  ["th_necrosis","th","نخر التيموس","Necrosis"],
+
+  ["kd_enlarged","kd","كلى متضخمة","Enlarged"],
+  ["kd_swollen","kd","كلى منتفخة","Swollen"],
+  ["kd_pale","kd","كلى شاحبة","Pale"],
+  ["kd_nephritis","kd","التهاب كلوي","Nephritis"],
+  ["kd_urate","kd","ترسب يوريت / نقرس كلوي","Urate deposits / nephrosis"],
+  ["kd_congested","kd","احتقان الكلى","Congested"],
+  ["kd_hemorrhage","kd","نزف الكلى","Hemorrhage"],
+  ["kd_mottled","kd","ترقيط الكلى","Mottled"],
+  ["kd_necrotic","kd","بؤر نخر بالكلى","Necrotic foci"],
+
+  ["ur_distended","ur","حالبين متمددة","Distended ureters"],
+  ["ur_urate","ur","ترسبات يوريت بالحالب","Uric deposits"],
+  ["ur_white_casts","ur","قوالب بيضاء","White casts"],
+  ["ur_obstruction","ur","انسداد الحالب","Obstruction"],
+
+  ["pv_gland_tip_hem","pv","نزف على قمم الغدد","Hemorrhage at gland tips"],
+  ["pv_enlarged","pv","تضخم المعدة الغدية","Enlarged"],
+  ["pv_thickened","pv","سماكة الجدار","Thickened wall"],
+  ["pv_catarrh","pv","إفراز نزلي","Catarrhal exudate"],
+  ["pv_ulcers","pv","تقرحات","Ulcers"],
+  ["pv_necrosis","pv","نخر","Necrosis"],
+  ["pv_ductal_metaplasia","pv","تحوّل الغدد لظهارة أنبوبية + هشاشة وميل للتمزق","Ductal gland metaplasia / fragile wall (prone to rupture)"],
+
+  ["gz_erosion","gz","تآكل القونصة","Erosion"],
+  ["gz_hemorrhage","gz","نزف القونصة","Hemorrhage"],
+  ["gz_ulceration","gz","تقرح","Ulceration"],
+  ["gz_detached_koilin","gz","انفصال طبقة الكوايلين","Detached koilin"],
+  ["gz_thin_koilin","gz","كوايلين رفيع","Thin koilin"],
+  ["gz_thick_koilin","gz","كوايلين سميك","Thick koilin"],
+  ["gz_nodules","gz","عقيدات نخرية بجدار القونصة","Necrotic nodules in gizzard wall"],
+
+  ["pn_necrosis","pn","نخر البنكرياس","Pancreatic necrosis"],
+  ["pn_hemorrhage","pn","نزف البنكرياس","Hemorrhage"],
+  ["pn_mottled","pn","ترقيط البنكرياس","Mottled"],
+  ["pn_enlargement","pn","تضخم البنكرياس","Enlargement"],
+  ["pn_atrophy","pn","ضمور البنكرياس","Atrophy"],
+
+  ["du_enteritis","du","التهاب معوي","Enteritis"],
+  ["du_hemorrhage","du","نزف الإثني عشر","Hemorrhage"],
+  ["du_necrosis","du","نخر","Necrosis"],
+  ["du_thickened","du","سماكة الجدار","Thickened wall"],
+  ["du_catarrh","du","إفراز نزلي","Catarrhal exudate"],
+  ["du_white_plaques","du","لويحات/خطوط بيضاء عرضية بالإثني عشر (سلّم)","White transverse plaques (ladder)"],
+
+  ["ji_fibrinonecrotic","ji","التهاب فيبريني نخري (بطانة منشفة)","Fibrinonecrotic enteritis"],
+  ["ji_hemorrhagic","ji","التهاب معوي نزفي","Hemorrhagic enteritis"],
+  ["ji_boutons","ji","تقرحات زرارية / نزفية (boutons)","Button ulcers"],
+  ["ji_ballooning","ji","انتفاخ الأمعاء بالغاز","Ballooning"],
+  ["ji_orange_mucus","ji","مخاط برتقالي + سماكة الجدار","Orange mucus + thick wall"],
+  ["ji_catarrhal","ji","التهاب نزلي","Catarrhal enteritis"],
+  ["ji_thick_wall","ji","جدار سميك","Thick wall"],
+  ["ji_thin_wall","ji","جدار رفيع","Thin wall"],
+  ["ji_salt_pepper","ji","بؤر بيضاء/نزفية عبر مصلية الأمعاء (ملح وفلفل)","Salt-and-pepper serosal foci"],
+
+  ["ce_coccidial","ce","آفات كوكسيدية","Coccidial lesions"],
+  ["ce_blood","ce","أعورين مملوءين بالدم","Blood-filled ceca"],
+  ["ce_caseous_core","ce","سدادة جبنية (cecal core)","Caseous core"],
+  ["ce_hemorrhage","ce","نزف الأعور","Hemorrhage"],
+  ["ce_necrosis","ce","نخر الأعور","Necrosis"],
+  ["ce_ulcer","ce","تقرح جدار الأعور","Cecal wall ulceration"],
+  ["ce_typhlitis","ce","التهاب الأعور","Typhlitis"],
+
+  ["ct_hemorrhage","ct","نزف اللوزتين المعويتين","Cecal tonsil hemorrhage"],
+  ["ct_enlarged","ct","تضخم اللوزتين","Enlarged"],
+  ["ct_necrosis","ct","نخر اللوزتين","Necrosis"],
+  ["ct_caseous","ct","آفات جبنية باللوزتين","Caseous lesions"],
+
+  ["bm_hemorrhage","bm","نزف عضلة الصدر","Breast muscle hemorrhage"],
+  ["bm_pale","bm","عضلة صدر شاحبة","Pale muscle"],
+  ["bm_dehydration","bm","جفاف العضلة","Dehydration"],
+  ["bm_edema","bm","وذمة العضلة","Edema"],
+
+  ["tm_hemorrhage","tm","نزف عضلة الفخذ","Thigh muscle hemorrhage"],
+  ["tm_necrosis","tm","نخر عضلة الفخذ","Necrosis"],
+  ["tm_cyanosis","tm","ازرقاق العضلة","Cyanosis"],
+
+  ["hj_arthritis","hj","التهاب مفصلي","Arthritis"],
+  ["hj_synovitis","hj","التهاب الغشاء الزليلي","Synovitis"],
+  ["hj_caseous","hj","إفراز جبني بالمفصل","Caseous exudate"],
+  ["hj_swelling","hj","تورم المفصل","Swelling"],
+
+  ["fh_necrosis","fh","نخر رأس الفخذ (BCO)","Femoral head necrosis"],
+  ["fh_osteomyelitis","fh","التهاب عظم ونقي","Osteomyelitis"],
+  ["fh_soft_bones","fh","عظام لينة مرنة (كساح)","Soft/pliable bones (rickets)"],
+  ["fh_beaded_ribs","fh","تسبّح الأضلاع عند اتصالها بالعمود الفقري","Beaded ribs (costochondral junction)"],
+  ["fh_bowed_legs","fh","انحناء / تقوّس الأرجل","Bowed legs"],
+  ["fh_perosis","fh","انزلاق وتر العرقوب عن لقمة الساق (Perosis)","Slipped tendon / perosis"],
+  ["fh_easily_broken","fh","عظام هشة سهلة الكسر (خاصة الأضلاع)","Brittle bones, easily fractured (esp. ribs)"],
+
+  ["nv_nerve_enlarged","nv","تضخم الأعصاب الطرفية (الوركي/العضدي)","Enlarged peripheral nerves"],
+
+  ["ov_regression","ov","ضمور / تراجع المبيض","Ovarian regression"],
+  ["ov_congest_hrg","ov","احتقان ونزف شديد بالحويصلات","Severe follicular congestion / hemorrhage"],
+  ["ov_hemorrhage","ov","نزف المبيض","Hemorrhage"],
+  ["ov_rupture","ov","تمزق حويصلي","Follicular rupture"],
+  ["ov_cysts","ov","أكياس مبيضية","Cysts"],
+  ["ov_peritonitis","ov","التهاب صفاقي بالصفار","Egg-yolk peritonitis"],
+
+  ["od_salpingitis","od","التهاب قناة البيض","Salpingitis"],
+  ["od_atrophy","od","ضمور قناة البيض","Atrophy"],
+  ["od_exudate","od","إفراز بقناة البيض","Exudate"],
+  ["od_egg_retention","od","احتباس بيض","Egg retention"],
+  ["od_cystic","od","قناة بيض كيسية / بياضة كاذبة","Cystic oviduct / false layer"],
+  ["od_cloaca_swelling","od","تورم المذرق (كلواكا)","Cloacal/vent swelling"],
+
+  ["ts_regression","ts","ضمور / صغر حجم الخصية","Testicular regression / atrophy"],
+  ["ts_nodules","ts","بؤر / عقيدات بيضاء على الخصية","White foci / nodules on testis"],
+  ["ts_hemorrhage","ts","نزف بالخصية","Testicular hemorrhage"],
+  ["ts_orchitis","ts","التهاب الخصية (تضخم / احتقان)","Orchitis (swelling / congestion)"],
+
+  ["pt_hemorrhage","pt","نزف بالغشاء البريتوني","Peritoneal hemorrhage"],
+  ["pt_fibrin","pt","التهاب بريتوني فيبريني","Fibrinous peritonitis"],
+  ["pt_effusion","pt","ارتشاح / سوائل حرة بالتجويف","Free abdominal effusion"],
+  ["pt_fat_petechiae","pt","نزف نقطي على الدهن البطني","Petechiae on abdominal fat"],
+  ["pt_omphalitis","pt","التهاب السرة / كيس مح غير ممتص متعفّن","Omphalitis / infected yolk sac"],
+  ["pt_fungal_nodules","pt","عقيدات فطرية بالتجويف البريتوني","Fungal nodules in peritoneal cavity"],
+
+  ["nt_oral_pustules","nt","بثور بيضاء بالفم/المريء/الحوصلة (تقرّن)","White pustules in mouth/esophagus/crop (keratinization)"],
+  ["nt_ataxia","nt","ترنّح / عدم اتزان (دماغي)","Ataxia / incoordination (cerebellar)"],
+  ["nt_subq_edema","nt","وذمة/نزف تحت الجلد (Exudative Diathesis)","Subcutaneous edema/hemorrhage (exudative diathesis)"],
+  ["nt_curled_toe","nt","شلل الأصابع المنحنية","Curled toe paralysis"],
+  ["nt_footpad_derm","nt","التهاب جلدي بوسادة القدم (نقص بيوتين)","Footpad dermatitis (biotin deficiency pattern)"],
+  ["nt_poor_feathering","nt","ريش رديء / متكسّر / منفوش دائم","Poor / ruffled / brittle feathering"],
+  ["nt_green_muscle","nt","عضلة صدر خضراء (Deep Pectoral Myopathy)","Green muscle disease (deep pectoral myopathy)"],
+  ["nt_hock_burn","nt","حروق العرقوب (تلامس الفرشة)","Hock burn (litter contact necrosis)"],
+  ["nt_heat_stress","nt","لهاث شديد وانتشار الأجنحة (إجهاد حراري)","Panting, wings spread (heat stress)"],
+  ["nt_pale_muscle_lines","nt","خطوط بيضاء موازية بعضلة الصدر (ضمور عضلي)","White striations in breast muscle (muscular dystrophy)"]
+];
+
+const DISEASES = [
+  {id:"col",ar:"الكولاي / CCRD",en:"Colibacillosis / CCRD",cls:"بكتيري",aMin:0,aMax:999,
+   test:"عزل E. coli من الكبد/نخاع العظم + اختبار حساسية",
+   w:{lv_perihep:3,ht_pericarditis:3,ts_orchitis:1,ts_nodules:1,as_yellow_caseous:3,ov_peritonitis:3,pt_omphalitis:3,as_sacculitis:2,as_adhesions:2,ht_fibrin:2,od_salpingitis:2,sk_cellulitis:2,as_cloudiness:1,as_thickening:1,od_exudate:1,sp_enlarged:1,lv_hepatomegaly:1,ln_pneumonia:1,ln_consolidation:1,ln_congestion:1,ov_rupture:1,hd_facial_edema:1,cs_sudden_death:1}},
+  {id:"typ",ar:"تيفود الطيور",en:"Fowl Typhoid (S. Gallinarum)",cls:"بكتيري",aMin:28,aMax:999,
+   test:"عزل S. Gallinarum + اختبار التلازن المصلي",
+   w:{lv_bronze:3,ts_nodules:2,ts_orchitis:1,lv_green:2,lv_white_spots:2,sp_enlarged:2,ov_regression:2,cc_anemic:2,lv_necrotic_foci:1,lv_hepatomegaly:1,sp_necrotic:1,ht_hemorrhage:1,ov_peritonitis:1,od_salpingitis:1,ht_nodules:1,cn_wasting:1,cs_greenish_diarrhea:1,cs_diarrhea:1}},
+  {id:"pul",ar:"البلوروم (الإسهال الأبيض)",en:"Pullorum Disease (S. Pullorum)",cls:"بكتيري",aMin:0,aMax:21,
+   test:"عزل S. Pullorum + ST plate agglutination",
+   w:{lv_white_spots:2,ce_caseous_core:2,ts_nodules:2,cs_white_diarrhea:2,pt_omphalitis:2,ht_nodules:3,gz_nodules:2,ln_necrotic_foci:1,lv_necrotic_foci:1,sp_necrotic:1,cs_sudden_death:1}},
+  {id:"chr",ar:"كوليرا الطيور",en:"Fowl Cholera (P. multocida)",cls:"بكتيري",aMin:56,aMax:999,
+   test:"مسحة كبد Giemsa (bipolar) + عزل P. multocida",
+   w:{lv_white_spots:3,ht_hemorrhage:3,ts_orchitis:1,lv_necrotic_foci:2,cs_sudden_death:2,ov_congest_hrg:2,ov_rupture:2,ln_necrotic_foci:2,hd_cyanosis:1,cc_cyanotic:1,cc_congested:1,sp_enlarged:1,ln_congestion:1,ln_pneumonia:1,hj_arthritis:1,hj_swelling:1,pt_fat_petechiae:1,ov_peritonitis:1,gz_hemorrhage:1,sp_necrotic:1}},
+  {id:"cor",ar:"الكوريزا المعدية",en:"Infectious Coryza",cls:"بكتيري",aMin:28,aMax:999,
+   test:"عزل Avibacterium paragallinarum + PCR",
+   w:{nb_caseous:3,hd_facial_edema:2,cs_nasal_discharge:2,nb_sinusitis:2,hd_wattle_swelling:2,nb_blockage:1,hd_ocular_catarrh:1,hd_conjunctivitis:1,cs_sneezing:1,tr_catarrh:1,cs_drop_production:1,cs_foul_odor:1,as_yellow_caseous:1}},
+  {id:"myc",ar:"الميكوبلازما / CRD",en:"Mycoplasmosis (MG)",cls:"بكتيري",aMin:0,aMax:999,
+   test:"HI / ELISA + PCR لـ M. gallisepticum",
+   w:{as_foamy:3,as_sacculitis:2,as_cloudiness:2,as_thickening:2,cs_rales:2,hd_ocular_froth:2,tr_catarrh:1,cs_cough:1,cs_sneezing:1,hd_conjunctivitis:1,ln_pneumonia:1,od_salpingitis:1,nb_sinusitis:1,cs_drop_production:1}},
+  {id:"nec",ar:"الالتهاب المعوي النخري",en:"Necrotic Enteritis",cls:"بكتيري",aMin:14,aMax:42,
+   test:"مسحة بطانة (قضبان Gram+) + عزل C. perfringens",
+   w:{ji_fibrinonecrotic:3,ji_ballooning:2,du_necrosis:1,lv_necrotic_foci:1,lv_perihep:1,cs_sudden_death:1}},
+  {id:"sta",ar:"العدوى العنقودية",en:"Staphylococcosis",cls:"بكتيري",aMin:0,aMax:999,
+   test:"عزل Staphylococcus aureus من سائل المفصل/العظم",
+   w:{fh_osteomyelitis:3,hj_arthritis:3,fh_necrosis:2,hj_caseous:2,hj_swelling:2,lg_joint_swelling:2,lg_footpad:1,hj_synovitis:1,lv_white_spots:1}},
+  {id:"ms",ar:"الميكوبلازما الزليلية (MS)",en:"Mycoplasma synoviae",cls:"بكتيري",aMin:14,aMax:999,
+   test:"PCR + مصلي (MS) + مسحة سائل زليلي",
+   w:{hj_synovitis:3,hj_arthritis:2,hj_swelling:2,lg_joint_swelling:2,lg_lameness:2,hd_pale_comb:1,cs_egg_quality:1,lg_footpad:1,hj_caseous:1,as_sacculitis:1,as_foamy:1}},
+
+  {id:"nd",ar:"النيوكاسل الحاد (vvND)",en:"Velogenic Newcastle Disease",cls:"فيروسي",aMin:0,aMax:999,
+   test:"PCR + HI (NDV) + العزل الفيروسي",
+   w:{pv_gland_tip_hem:3,ji_boutons:3,ts_regression:1,ct_hemorrhage:3,cs_nervous:3,cs_drop_production:3,cs_egg_quality:1,ov_regression:3,sp_necrotic:2,sp_white_necrotic:2,cs_greenish_diarrhea:2,tr_hemorrhage:1,tr_catarrh:1,tr_congestion:1,sp_mottled:1,du_hemorrhage:1,ji_hemorrhagic:1,ht_myocarditis:1,gz_hemorrhage:1,cs_sudden_death:1,ct_enlarged:1,ct_necrosis:1,od_atrophy:1,ov_peritonitis:1,hd_conjunctivitis:1,hd_facial_edema:1,cs_diarrhea:1,cs_dyspnea:1,cs_sneezing:1}},
+  {id:"ai",ar:"إنفلونزا الطيور عالية الضراوة (H5 HPAI)",en:"High-Path Avian Influenza (H5)",cls:"فيروسي",aMin:0,aMax:999,
+   test:"PCR (H5/H7) — يستوجب الإبلاغ الفوري للجهات الرسمية",
+   w:{hd_cyanosis:3,pn_necrosis:3,ts_hemorrhage:2,ts_regression:1,cc_cyanotic:2,pn_hemorrhage:2,ht_hemorrhage:2,pv_gland_tip_hem:2,ji_boutons:2,ln_hemorrhage:2,tr_hemorrhage:2,cs_sudden_death:2,ov_regression:2,cs_drop_production:2,pt_hemorrhage:2,pt_fat_petechiae:3,hd_facial_edema:2,ov_hemorrhage:2,ov_congest_hrg:2,ov_rupture:1,ov_peritonitis:1,hd_conjunctivitis:1,lv_necrotic_foci:1,kd_necrotic:1,ln_edema:1,ln_congestion:1,kd_congested:1,kd_hemorrhage:1,sp_hemorrhage:1,sp_necrotic:1,sp_necro_hrg:1,pn_mottled:1,tm_cyanosis:1,th_hemorrhage:1,gz_hemorrhage:1,cs_dyspnea:1}},
+  {id:"lpai",ar:"إنفلونزا الطيور H9 (منخفضة الضراوة)",en:"Low-Path Avian Influenza (H9)",cls:"فيروسي",aMin:0,aMax:999,
+   test:"PCR (H9) + عزل — وغالباً مصحوبة بعدوى E. coli ثانوية",
+   w:{sp_necro_hrg:3,ts_regression:1,cs_drop_production:2,pt_hemorrhage:2,cs_egg_quality:1,od_salpingitis:2,od_atrophy:2,tr_hemorrhage:1,as_yellow_caseous:1,as_sacculitis:1,sp_hemorrhage:1,tr_catarrh:1,cs_dyspnea:1,cs_sneezing:1,cs_rales:1,ln_congestion:1,ln_pneumonia:1,kd_swollen:1,pn_mottled:1,ov_regression:1,ov_peritonitis:1,cc_cyanotic:1,cc_congested:1,hd_conjunctivitis:1,nb_sinusitis:1,tr_bifurcation:1,lg_lameness:1,cs_white_watery:1}},
+  {id:"ib",ar:"الالتهاب الشعبي المعدي",en:"Infectious Bronchitis",cls:"فيروسي",aMin:0,aMax:999,
+   test:"PCR (IBV) + HI / ELISA",
+   w:{tr_bifurcation:3,kd_nephritis:3,ts_regression:1,kd_urate:3,kd_swollen:2,kd_enlarged:2,ur_distended:2,ur_urate:2,ur_white_casts:2,od_atrophy:2,cs_drop_production:2,cs_egg_quality:2,od_cystic:2,tr_catarrh:1,cs_rales:1,cs_sneezing:1,cs_cough:1,cs_dyspnea:1,ln_congestion:1,tr_congestion:1,kd_mottled:1,cn_dehydration:1}},
+  {id:"ilt",ar:"الالتهاب الحنجري القصبي",en:"Infectious Laryngotracheitis",cls:"فيروسي",aMin:21,aMax:999,
+   test:"PCR (ILTV) + histo (أجسام اندماج داخل نووية)",
+   w:{tr_hemorrhage:3,cs_dyspnea:2,cs_cough:2,hd_conjunctivitis:2,nb_sinusitis:2,tr_caseous_plug:1,tr_fibrin:1,tr_thickened:1,tr_congestion:1,hd_ocular_catarrh:1,tr_catarrh:1,cs_sneezing:1}},
+  {id:"ibd",ar:"الجامبورو",en:"Infectious Bursal Disease",cls:"فيروسي",aMin:14,aMax:49,
+   test:"PCR (IBDV) + histo لجراب فابريشيوس",
+   w:{bu_enlarged:3,bu_hemorrhage:3,tm_hemorrhage:3,bu_gelatinous:3,bm_hemorrhage:3,bu_edematous:2,cn_dehydration:2,kd_urate:1,bu_atrophied:1,bu_caseous:1,bu_necrosis:1,th_atrophied:1,th_hemorrhage:1,pv_gland_tip_hem:1,bm_dehydration:1,cs_white_watery:1,sp_enlarged:1}},
+  {id:"mar",ar:"مرض ماريك",en:"Marek's Disease",cls:"فيروسي",aMin:56,aMax:999,
+   test:"histo (تكاثر لمفاوي) + PCR (MDV) مع مراعاة العمر",
+   w:{nv_nerve_enlarged:3,hd_grey_eye:2,lv_tumors:2,sp_tumors:2,cs_nervous:2,pv_enlarged:1,pv_thickened:1,cn_wasting:1,sp_enlarged:1}},
+  {id:"leu",ar:"اللوكوزس (سرطان الدم)",en:"Avian Leukosis",cls:"فيروسي",aMin:112,aMax:999,
+   test:"ELISA / PCR (ALV) + histo لتمييزه عن ماريك",
+   w:{lv_tumors:3,bu_tumor:2,sp_tumors:2,lv_hepatomegaly:1,sp_enlarged:1,lv_rupture:1,cc_anemic:1,cn_wasting:1}},
+  {id:"mpv",ar:"الميتانيمو / تورم الرأس",en:"aMPV / Swollen Head Syndrome",cls:"فيروسي",aMin:0,aMax:999,
+   test:"PCR (aMPV) + مصلي",
+   w:{hd_facial_edema:3,tr_catarrh:2,cs_egg_quality:1,cs_nasal_discharge:1,cs_sneezing:1,tr_bifurcation:1,nb_caseous:1,nb_sinusitis:1,cs_cough:1,cs_drop_production:1}},
+  {id:"eds",ar:"متلازمة انخفاض إنتاج البيض (EDS-76)",en:"Egg Drop Syndrome (Atadenovirus)",cls:"فيروسي",aMin:140,aMax:999,
+   test:"HI (EDSV) + عزل فيروسي من قناة البيض/الحويصلة المح — لا علاج، الاعتماد على التحصين والوقاية",
+   w:{cs_shell_color_loss:3,cs_egg_quality:3,od_atrophy:2,ov_regression:2,cs_drop_production:2,od_exudate:1,sp_enlarged:1,lv_fatty:1}},
+  {id:"pox",ar:"الجدري",en:"Fowl Pox",cls:"فيروسي",aMin:0,aMax:999,
+   test:"histo (أجسام Bollinger) + التشخيص الحقلي للآفات",
+   w:{sk_pox:3,tr_fibrin:1,hd_conjunctivitis:1,hd_ocular_catarrh:1,kd_necrotic:1}},
+  {id:"reo",ar:"التهاب المفاصل الفيروسي (ريو)",en:"Viral Arthritis / Reovirus",cls:"فيروسي",aMin:7,aMax:999,
+   test:"PCR (Reovirus) + histo للأوتار والغشاء الزليلي",
+   w:{hj_synovitis:2,hj_arthritis:2,hj_swelling:2,lg_joint_swelling:2,fh_necrosis:1,lv_hepatitis:1,ht_myocarditis:1,ht_hydropericardium:1}},
+  {id:"tvp",ar:"التهاب المعدة الغدية الفيروسي الساري (TVP)",en:"Transmissible Viral Proventriculitis (CPNV)",cls:"فيروسي",aMin:14,aMax:56,
+   test:"histo (نخر الظهارة الغدية + تحوّل أنبوبي) + PCR/IHC لـ CPNV — غالباً عدوى مختلطة مع فيروس الجامبورو (IBDV) وأحياناً الأدينو، مع تفاعل مصلي مشترك",
+   w:{pv_ductal_metaplasia:3,pv_enlarged:2,pv_thickened:2,pv_necrosis:1,bu_enlarged:1,bu_atrophied:1,cn_wasting:1}},
+  {id:"ibh",ar:"التهاب الكبد الاندماجي / استسقاء التامور / تآكل القونصة",en:"Inclusion Body Hepatitis / HHS / Gizzard Erosion (Adenovirus)",cls:"فيروسي",aMin:14,aMax:45,
+   test:"PCR (FAdV) وتحديد النمط المصلي + histo (أجسام اندماج داخل نووية بالكبد)",
+   w:{ht_hydropericardium:3,lv_hepatitis:2,lv_necrotic_foci:2,cn_ascites:2,cc_icteric:2,gz_erosion:2,lv_hemorrhage:1,cc_anemic:1,bm_hemorrhage:1,tm_hemorrhage:1,pn_necrosis:1}},
+
+  {id:"coc",ar:"الكوكسيديا",en:"Coccidiosis",cls:"طفيلي",aMin:14,aMax:56,
+   test:"كشط البطانة وفحص الأوسيست + تحديد النوع بالموقع: إثني عشر (لويحات بيضاء)=acervulina · وسط الأمعاء (مخاط برتقالي)=maxima · وسط الأمعاء (نزف شديد+بؤر بيضاء)=necatrix · الأعورين (دم/سدادات)=tenella",
+   w:{ce_coccidial:3,ce_blood:3,du_white_plaques:3,ji_salt_pepper:3,ce_hemorrhage:2,ji_orange_mucus:2,ji_hemorrhagic:2,du_hemorrhage:2,ji_ballooning:1,ji_thick_wall:1,du_thickened:1,du_enteritis:1,ce_typhlitis:1,cn_wasting:1,cs_diarrhea:1}},
+  {id:"his",ar:"الهيستومونس (الرأس السوداء)",en:"Histomoniasis",cls:"طفيلي",aMin:28,aMax:999,
+   test:"histo + كشط للكبد/الأعور (بروتوزوا)",
+   w:{lv_target:3,ce_caseous_core:3,cs_sulfur_yellow:2,ce_ulcer:2,ce_necrosis:1,ce_typhlitis:1,cn_wasting:1}},
+
+  {id:"asp",ar:"الأسبرجلس",en:"Aspergillosis",cls:"فطري",aMin:0,aMax:999,
+   test:"زرع فطري + histo (خيوط فطرية بالعقيدات)",
+   w:{ln_fungal:3,pt_fungal_nodules:2,hd_fungal_eye:2,ln_necrotic_foci:2,ln_consolidation:1,ln_pneumonia:1,cs_dyspnea:1,hd_cyanosis:1,cs_nervous:1,cs_sudden_death:1}},
+  {id:"afl",ar:"التسمم بالأفلاتوكسين",en:"Aflatoxicosis",cls:"سُمّي",aMin:0,aMax:999,
+   test:"تحليل العلف (ELISA / HPLC) للأفلاتوكسين",
+   w:{lv_fatty:2,lv_bile_duct:2,lv_hepatomegaly:1,lv_rupture:1,ht_hydropericardium:1,gz_erosion:1,cc_anemic:1,bm_pale:1,cn_wasting:1,kd_urate:1,pt_hemorrhage:1}},
+  {id:"ochra",ar:"التسمم بالأوكراتوكسين",en:"Ochratoxicosis",cls:"سُمّي",aMin:0,aMax:999,
+   test:"تحليل العلف (ELISA / HPLC) للأوكراتوكسين — تركيز على السمّية الكلوية",
+   w:{kd_enlarged:3,kd_pale:3,kd_urate:2,ur_urate:2,kd_swollen:2,du_enteritis:1,kd_mottled:1,ur_distended:1,cn_wasting:2,cc_anemic:1,bm_pale:1,cs_white_diarrhea:1,gz_erosion:1}},
+  {id:"t2",ar:"التسمم بالتريكوثيسينات (T-2)",en:"Trichothecene / T-2 Toxicosis",cls:"سُمّي",aMin:0,aMax:999,
+   test:"تحليل العلف (ELISA / HPLC) للتريكوثيسينات — الآفة الفموية شبه مميّزة حقلياً",
+   w:{nb_oral_ulcers:3,cn_wasting:2,cs_drop_production:1,cs_egg_quality:1,pt_hemorrhage:1,kd_urate:1,sk_wounds:1}},
+  {id:"zea",ar:"التسمم بالزيرالينون (سمّ استروجيني)",en:"Zearalenone Toxicosis (Mycoestrogen)",cls:"سُمّي",aMin:0,aMax:999,
+   test:"تحليل العلف (ELISA / HPLC) للزيرالينون — يُشتبه به خاصة عند وجود علامات تأنيث في الذكور مع أكياس تناسلية في الإناث",
+   w:{od_cystic:3,ts_regression:2,od_cloaca_swelling:2,ov_regression:1,cs_egg_quality:1,cs_drop_production:1}},
+  {id:"asc",ar:"متلازمة الاستسقاء",en:"Ascites Syndrome",cls:"استقلابي",aMin:21,aMax:49,
+   test:"تشخيص حقلي (فشل القلب الأيمن) + استبعاد الأسباب المعدية",
+   w:{cn_ascites:3,ht_hydropericardium:2,ht_enlargement:2,ln_edema:1,ln_congestion:1,hd_cyanosis:1,cc_cyanotic:1,lv_congestion:1}},
+  {id:"gout",ar:"النقرس الحشوي",en:"Visceral Gout",cls:"استقلابي",aMin:0,aMax:999,
+   test:"تحليل ترسبات اليوريت + مراجعة الماء/البروتين/فيتامين A",
+   w:{kd_urate:3,ur_urate:3,ur_distended:2,ur_white_casts:2,kd_enlarged:1,kd_pale:1,hj_swelling:1,lg_joint_swelling:1,cs_white_diarrhea:1}},
+
+  {id:"vita",ar:"نقص فيتامين A",en:"Vitamin A Deficiency",cls:"تغذوي",aMin:0,aMax:999,
+   test:"تحليل مستوى فيتامين A بالكبد/البلازما + مراجعة العليقة",
+   w:{nt_oral_pustules:3,nb_caseous:1,hd_ocular_catarrh:1,kd_urate:1,cn_wasting:1,nt_poor_feathering:1}},
+  {id:"vitd",ar:"نقص فيتامين D3 / كالسيوم-فوسفور (الكساح)",en:"Vitamin D3 / Ca-P Deficiency (Rickets)",cls:"تغذوي",aMin:0,aMax:56,
+   test:"مراجعة نسبة الكالسيوم:الفوسفور بالعليقة + مستوى D3 + فحص إشعاعي للعظام",
+   w:{fh_soft_bones:3,fh_beaded_ribs:2,fh_bowed_legs:2,fh_easily_broken:1,lg_lameness:1,cs_egg_quality:1}},
+  {id:"vite",ar:"نقص فيتامين E / السيلينيوم",en:"Vitamin E / Selenium Deficiency",cls:"تغذوي",aMin:0,aMax:42,
+   test:"مراجعة مستوى فيتامين E والسيلينيوم بالعليقة (خاصة العلف المخزّن/المؤكسد)",
+   w:{nt_ataxia:3,nt_subq_edema:2,nt_pale_muscle_lines:2,ht_hydropericardium:1,cs_nervous:1,cn_wasting:1}},
+  {id:"vitb2",ar:"نقص الريبوفلافين (B2)",en:"Riboflavin (B2) Deficiency",cls:"تغذوي",aMin:0,aMax:21,
+   test:"مراجعة مصدر B2 بالعليقة (يتلف بالحرارة/التخزين الطويل)",
+   w:{nt_curled_toe:3,nv_nerve_enlarged:1,cn_wasting:1,nt_poor_feathering:1}},
+  {id:"mn_pero",ar:"نقص المنجنيز (Perosis)",en:"Manganese Deficiency (Perosis)",cls:"تغذوي",aMin:0,aMax:28,
+   test:"مراجعة مستوى المنجنيز والكولين وحمض الفوليك بالعليقة",
+   w:{fh_perosis:3,lg_lameness:2,fh_bowed_legs:1}},
+  {id:"clf",ar:"إجهاد التقفيص / هشاشة عظام البياض",en:"Cage Layer Fatigue / Osteoporosis",cls:"إداري-استقلابي",aMin:140,aMax:999,
+   test:"تشخيص حقلي (تاريخ الإسكان + كثافة العظم) + مراجعة الكالسيوم والفيتامين D3 بالعليقة",
+   w:{fh_easily_broken:3,cs_drop_production:1,cs_egg_quality:1,lg_lameness:1}},
+  {id:"dpm",ar:"عضلة الصدر الخضراء (Deep Pectoral Myopathy)",en:"Deep Pectoral Myopathy (Green Muscle Disease)",cls:"إداري-استقلابي",aMin:35,aMax:999,
+   test:"تشخيص حقلي عند التصنيع (لون العضلة العميقة) — لا علاقة بالتغذية، بل بفرط نشاط الجناح في السلالات سريعة النمو",
+   w:{nt_green_muscle:3,bm_pale:1}},
+  {id:"heat",ar:"إجهاد حراري",en:"Heat Stress",cls:"إداري",aMin:0,aMax:999,
+   test:"تشخيص حقلي (قراءة الحرارة/الرطوبة بالعنبر + معدل التهوية) — لا يحتاج تأكيداً معملياً",
+   w:{nt_heat_stress:3,cs_dyspnea:2,cn_ascites:1,cs_sudden_death:1,nt_hock_burn:1}},
+
+  {id:"spiro",ar:"السبيروكيتوزس (بوريليا الطيور)",en:"Avian Spirochetosis (Borrelia anserina)",cls:"دم/طفيلي",aMin:0,aMax:999,
+   test:"مسحة دم (Giemsa) لرؤية السبيروكيت + PCR — يزداد صيفاً مع نشاط قراد Argas الناقل، يُشتبه فيه كتشخيص تفريقي مع النيوكاسل",
+   w:{sp_marbled_huge:3,lv_hepatomegaly:1,pv_necrosis:1,cs_leg_paralysis:2,cc_anemic:1,cs_sudden_death:1}},
+  {id:"leuco",ar:"الليوكوسيتوزونوسيس (ملاريا الطيور)",en:"Leucocytozoonosis (Avian Malaria)",cls:"دم/طفيلي",aMin:0,aMax:999,
+   test:"مسحة دم (Giemsa) لرؤية الجاميتوسيت + تحديد كثرة الكريات البيضاء — ينتقل بذباب Simulium الأسود، يزداد قرب المجاري المائية",
+   w:{sp_enlarged:2,cs_leukocytosis:2,cc_anemic:2,lv_hepatomegaly:1,cs_leg_paralysis:1,cs_dyspnea:1,cs_sudden_death:1}}
+];
+
+/* Composite field syndromes: fire only when BOTH components have strong support (score >= minEach). */
+const COMPOSITES = [
+  {id:"crd",ar:"مركّب الأمراض التنفسية المزمنة (CRD Complex)",en:"Chronic Respiratory Disease Complex (MG + E. coli)",parts:["myc","col"],minEach:2,
+   note:"الصورة الأشيع في التسمين المصري: ميكوبلازما تمهّد الطريق لكولاي ثانوي فترتفع الخسائر ومصادرة اللحوم عند الذبح (أكياس هوائية جبنية + غشاء كبد/قلب). العلاج المبكر يغيّر المسار كثيراً.",
+   test:"PCR/HI (MG) + عزل E. coli وحساسية"},
+  {id:"h9_coli",ar:"H9 معقّدة بعدوى الكولاي",en:"H9 (LPAI) complicated by Colibacillosis",parts:["lpai","col"],minEach:3,
+   note:"الصورة الحقلية المصرية الأشيع: H9 تفتح الباب لـ E. coli فيرتفع النفوق فجأة. التعامل: توجيه العلاج للكولاي حسب الحساسية + دعم تنفسي/مناعي، مع إثبات H9.",
+   test:"PCR (H9) + عزل E. coli واختبار حساسية"},
+  {id:"nd_coli",ar:"نيوكاسل معقّد بعدوى الكولاي",en:"Newcastle complicated by Colibacillosis",parts:["nd","col"],minEach:3,
+   note:"نيوكاسل ميداني يعقّده كولاي ثانوي (أكياس هوائية + غشاء على الكبد والقلب) مع ارتفاع النفوق.",
+   test:"PCR/HI (NDV) + عزل E. coli وحساسية"},
+  {id:"ib_coli",ar:"شعبي معقّد بعدوى الكولاي",en:"IB complicated by Colibacillosis",parts:["ib","col"],minEach:3,
+   note:"التهاب شعبي معدي يعقّده كولاي (خاصة في وجود سدادة التفرع + أكياس جبنية).",
+   test:"PCR (IBV) + عزل E. coli وحساسية"},
+  {id:"nec_coc",ar:"التهاب معوي نخري معقّد بالكوكسيديا",en:"Necrotic Enteritis with Coccidiosis",parts:["nec","coc"],minEach:3,
+   note:"صورة تسمين شائعة: الكوكسيديا تجرح البطانة فتتيح فرط نمو C. perfringens. التعامل: علاج كوكسيديا فعّال + مضاد للكلوستريديا + مراجعة العلف والفرشة.",
+   test:"كشط البطانة (أوسيست + قضبان Gram+) + عزل C. perfringens"},
+  {id:"tvp_ibd",ar:"TVP معقّد بعدوى مختلطة (جامبورو/أدينو)",en:"TVP mixed infection (IBDV / Adenovirus)",parts:["tvp","ibd"],minEach:2,
+   note:"التهاب المعدة الغدية الساري غالباً ما يصاحبه تفاعل مصلي/عدوى مشتركة مع فيروس الجامبورو (وأحياناً الأدينو)، مما يزيد شدة الصورة المناعية والهضمية معاً.",
+   test:"histo للمعدة الغدية والبورسا معاً + PCR (CPNV/IBDV) + فحص التفاعل المصلي مع الأدينو"}
+];
+
+/* Treatment (tx) + Prevention (px) per disease id — field-oriented, Egypt-aware. Antibiotics per sensitivity. */
+const TXPX = {
+  col:{tx:"مضاد حيوي حسب اختبار الحساسية (كولستين/إنروفلوكساسين/أموكسيسيلين/جنتاميسين) + دعم كبدي وتحسين تهوية. تجنّب العشوائية.",px:"مياه معالجة، خفض الأمونيا والزحام، تحكم بالتهوية والرطوبة، تحصين الأمهات، تطهير وبيوسكيورتي."},
+  typ:{tx:"مضاد حيوي حسب الحساسية (فلوروكينولون/أموكسيسيلين/سلفا). العلاج لا يمنع الحاملات؛ قد يُفضّل الاستبعاد تجارياً.",px:"قطعان خالية من السالمونيلا، فحص مصلي، مكافحة قوارض، تطهير، تحصين حيث يُسمح."},
+  pul:{tx:"نادراً يُعالَج تجارياً؛ حساسية دوائية للحالات والأساس استبعاد الحاملات.",px:"أمهات خالية من البلوروم، فحص التلازن، تطهير المفرخ، مكافحة القوارض."},
+  chr:{tx:"حساسية دوائية (سلفا+ترايميثوبريم/تتراسيكلين/أموكسيسيلين)، علاج مبكر للقطيع كله مع توقّع الانتكاس.",px:"تحصين (باكترين) في المناطق الموبوءة، مكافحة القوارض والطيور البرية، إزالة النافق أولاً بأول."},
+  cor:{tx:"سلفوناميدات/إريثرومايسين/تايلوزين، علاج كل القطيع مع تسهيل تناول الماء والعلف.",px:"تحصين (باكترين)، all-in/all-out، عدم خلط الأعمار، بيوسكيورتي."},
+  myc:{tx:"تايلوزين/تايلمايكوزين/دوكسيسيكلين/فلوروكينولون؛ العلاج يخفّف لا يستأصل.",px:"أمهات خالية من MG، PCR، تحصين عند اللزوم، تقليل الإجهاد والغبار."},
+  nec:{tx:"أموكسيسيلين/لينكوسبكتين في الماء + مراجعة الكوكسيديا المصاحبة والعلف.",px:"برنامج كوكسيديا فعّال، أحماض عضوية/بروبيوتك، تجنّب القفزات المفاجئة في البروتين/القمح، فرشة جافة."},
+  sta:{tx:"حساسية دوائية (أموكسيسيلين/لينكومايسين) لفترة أطول؛ الاستجابة محدودة في العظام.",px:"تقليل الإصابات والخدوش، جودة الفرشة، تعقيم إبر التحصين، بيوسكيورتي."},
+  ms:{tx:"تايلوزين/دوكسيسيكلين/فلوروكينولون.",px:"أمهات خالية، PCR، تحصين، بيوسكيورتي."},
+  nd:{tx:"لا يوجد علاج نوعي؛ دعم + مضاد حيوي واسع لمنع العدوى الثانوية. في التفشيات تُتّبع الإجراءات الرسمية.",px:"برنامج تحصين محكم (حي+مقتول) مع معايرة مصلية، بيوسكيورتي صارم، all-in/all-out."},
+  ai:{tx:"⚠ مرض واجب الإبلاغ — لا يُعالَج. الإجراء: إبلاغ فوري للجهات الرسمية، إعدام وحجر ومنع حركة وتطهير.",px:"بيوسكيورتي صارم، منع الطيور البرية، فصل الأنواع، تحصين حسب السياسة الرسمية."},
+  lpai:{tx:"لا علاج فيروسي؛ الأهم منع/علاج الكولاي الثانوي (حساسية دوائية) + رفع مناعة ودعم + تحسين تهوية.",px:"تحصين H9 (مقتول)، بيوسكيورتي، خفض الإجهاد والأمونيا، ضبط الكولاي."},
+  ib:{tx:"لا علاج نوعي؛ دعم كلوي (فيتامينات ومياه) لتقليل النقرس + مضاد حيوي للثانوي + رفع حرارة العنبر قليلاً.",px:"تحصين IB متعدد العترات حسب المنطقة، بيوسكيورتي."},
+  ilt:{tx:"لا علاج نوعي؛ دعم + مضاد حيوي للثانوي + تقليل الإجهاد.",px:"تحصين حسب المنطقة (بحذر مع العترات الحية)، بيوسكيورتي صارم (فيروس شديد العدوى)."},
+  ibd:{tx:"لا علاج نوعي؛ سوائل وفيتامينات، خفض البروتين مؤقتاً، مضاد حيوي للثانوي.",px:"تحصين محسوب بالتترات (فارقة أمهات)، تطهير قوي (فيروس مقاوم)، بيوسكيورتي."},
+  mar:{tx:"لا يوجد علاج.",px:"تحصين عمر يوم (HVT/Rispens)، بيوسكيورتي المفرخ، تقليل التعرض المبكر."},
+  leu:{tx:"لا يوجد علاج.",px:"استئصال ALV من قطعان الأمهات، لا يوجد تحصين، بيوسكيورتي."},
+  mpv:{tx:"مضاد حيوي للكولاي الثانوي (سبب معظم الأعراض) + دعم.",px:"تحصين aMPV، تهوية جيدة، بيوسكيورتي."},
+  eds:{tx:"لا يوجد علاج نوعي؛ لا يستعيد الإنتاج للطبيعي دائماً حتى بعد زوال الأعراض — دعم غذائي وفيتامينات فقط.",px:"تحصين EDS-76 (عادة مدمج مع ND/IB) قبل بداية الإنتاج، مياه معالجة (تجنّب مصادر مفتوحة قد تحمل الفيروس من الطيور المائية البرية)، بيوسكيورتي ضد الطيور المائية."},
+  pox:{tx:"لا علاج نوعي؛ علاج الآفات الثانوية + فيتامين A + دعم.",px:"تحصين (وخز الجناح)، مكافحة الناقل (البعوض)."},
+  reo:{tx:"لا علاج نوعي؛ دعم مضاد للالتهاب.",px:"تحصين الأمهات لنقل المناعة، بيوسكيورتي."},
+  ibh:{tx:"لا علاج نوعي؛ دعم كبدي + مضاد حيوي للثانوي + خفض السموم. مراجعة مناعة القطيع (IBD/CAV) لأن الفوعة ترتفع مع العدوى المشتركة.",px:"تحصين الأمهات حيث يتوفر (نقل مناعة سلبية)، ضبط الأفلاتوكسين، السيطرة على IBD/CAV، بيوسكيورتي."},
+  tvp:{tx:"لا علاج نوعي (فيروسي)؛ دعم هضمي وفيتامينات، ومراجعة برنامج IBD لاحتمال التفاعل المصلي المشترك.",px:"بيوسكيورتي وتطهير قوي بين الدورات (فيروس مقاوم نسبياً)، تقليل الإجهاد والاكتظاظ، مراقبة الأداء عند التصنيع (هشاشة المعدة الغدية)."},
+  coc:{tx:"أمبروليوم/تولترازوريل/دايكلازوريل/سلفا حسب الحالة + فيتامين K و A.",px:"برنامج أنتيكوكسيديال أو لقاح، فرشة جافة، تدوير المطهرات، إدارة الرطوبة."},
+  his:{tx:"لا يوجد دواء مرخّص فعّال في كثير من الأسواق؛ الوقاية هي الأساس + دعم.",px:"مكافحة ديدان الأعور (Heterakis) الناقلة، فصل الرومي عن الدجاج، إدارة الفرشة."},
+  asp:{tx:"إزالة المصدر (علف/فرشة متعفنة) فوراً؛ مضادات فطرية محدودة الجدوى + دعم.",px:"علف وفرشة نظيفة جافة، تهوية، تطهير المفرخ، تجنّب العفن."},
+  afl:{tx:"إيقاف العلف الملوث فوراً + رابط سموم (toxin binder) + دعم كبدي وفيتامينات وبروتين.",px:"فحص العلف، رابط سموم وقائي، تخزين جاف، مكافحة الفطر."},
+  ochra:{tx:"إيقاف العلف الملوث + رابط سموم + دعم كلوي (مياه وفيتامينات) + خفض البروتين.",px:"فحص العلف (خاصة الذرة)، تخزين جيد، رابط سموم، ضبط الرطوبة."},
+  t2:{tx:"إيقاف العلف الملوث فوراً + رابط سموم + عناية موضعية بتقرحات الفم/المنقار + دعم مناعي وفيتامينات (خاصة A وE).",px:"فحص العلف (القمح والذرة معرّضان)، رابط سموم واسع الطيف، تخزين جاف بعيد عن الرطوبة، تجنّب حبوب متعفنة الظاهر."},
+  zea:{tx:"إيقاف العلف الملوث + رابط سموم مخصّص للإستروجينات الفطرية + مراجعة أداء الأمهات (خصوبة/فقس).",px:"فحص الذرة والقمح خاصة بعد تخزين رطب، رابط سموم وقائي، تجنّب تلوّث الفيوزاريوم في الحبوب."},
+  asc:{tx:"تحسين التهوية والأكسجين، خفض كثافة الطاقة/سرعة النمو، تقليل الملح، دعم.",px:"إدارة التهوية والحرارة، تقييد نمو مبكر محسوب، تقليل الإجهاد البارد."},
+  gout:{tx:"خفض البروتين والكالسيوم الزائد، رفع المياه، مراجعة الفيتامين A وسبب الكلى (IB/سموم).",px:"توازن العليقة (بروتين/كالسيوم/فوسفور)، مياه كافية، تجنّب سمية الصوديوم/السلفا، ضبط IB."},
+  vita:{tx:"إضافة فيتامين A بجرعة علاجية بالماء/العليقة فوراً + معالجة العدوى الثانوية بالفم/الجهاز التنفسي.",px:"مراجعة تركيز فيتامين A بالعليقة وتاريخ صلاحية البريميكس، خزن العلف بعيداً عن الحرارة والأكسدة."},
+  vitd:{tx:"تصحيح فيتامين D3 والكالسيوم:الفوسفور بالعليقة فوراً؛ الحالات الشديدة قد لا تستعيد الشكل الطبيعي للعظم.",px:"نسبة كالسيوم:فوسفور صحيحة (~2:1)، فيتامين D3 كافٍ، إتاحة ضوء شمس مباشر للقطعان الأرضية إن أمكن."},
+  vite:{tx:"إضافة فيتامين E وسيلينيوم بالعليقة/الماء فوراً + وقف أي علف مؤكسد/قديم.",px:"فحص جودة الزيوت والدهون بالعلف (لا تتزنخ)، تخزين قصير وجاف، مستوى سيلينيوم كافٍ خاصة الأمهات."},
+  vitb2:{tx:"إضافة ريبوفلافين (B2) بالماء فوراً؛ الحالات المبكرة قابلة للتحسّن، الشلل المتقدّم قد لا يرتد بالكامل.",px:"مراجعة مصدر B2 بالعليقة وتاريخ تصنيعها (يتلف بالتخزين الطويل والحرارة)."},
+  mn_pero:{tx:"إضافة منجنيز وكولين وحمض فوليك بالعليقة؛ الانزلاق الوتري المتقدّم لا يُصحَّح غالباً.",px:"توازن المنجنيز والكولين بالعليقة حسب الاحتياج، خاصة في التسمين سريع النمو."},
+  clf:{tx:"لا علاج للحالة المتقدّمة (كسور)؛ عزل الحالات المصابة ودعم كالسيوم/D3 للقطيع.",px:"كالسيوم وفيتامين D3 كافيين قبل بداية الإنتاج وأثناءه، إتاحة الحركة/التمرين حيث يمكن، مراجعة نظام الإسكان."},
+  dpm:{tx:"لا علاج؛ الآفة تُكتشف عند التصنيع ولا تؤثر على السلامة الغذائية لكنها تخفض القيمة التجارية للقطعة.",px:"تقليل الإجهاد الحركي المفاجئ للطيور قبل النقل/التصنيع، مراجعة كثافة التربية وسهولة الوصول للعلف/الماء."},
+  heat:{tx:"تبريد فوري (مراوح/تبخير/مياه باردة)، زيادة التهوية، تقليل الكثافة، تأجيل العلاج المجهد لحين استقرار الحرارة.",px:"تصميم تهوية وتبريد كافٍ للعنبر حسب الكثافة والموسم، مياه باردة متاحة دائماً، تجنّب الإجهاد وقت الذروة الحرارية."},
+  spiro:{tx:"مضاد حيوي (بنسلين/تتراسيكلين) فعّال ومجدٍ خاصة بالتدخل المبكر + دعم.",px:"مكافحة قراد الأرغاس (Argas) في العنبر والشقوق، تطهير بين الدورات، تجنّب إعادة استخدام الإبر بين الطيور."},
+  leuco:{tx:"لا علاج نوعي فعّال معتمد على نطاق واسع؛ دعم عام ومضاد حيوي للعدوى الثانوية.",px:"مكافحة ذباب Simulium الناقل (بيوسكيورتي حول المجاري المائية القريبة)، تجنّب تربية القطعان قرب مصادر مياه راكدة/جارية بها الناقل."}
+};
+
+
+ORGANS.forEach(o=>LESIONS.push([o.id+"_normal",o.id,"طبيعي / سليم (تم الفحص)","Normal (examined)"]));
+const LES_BY_ID=Object.fromEntries(LESIONS.map(l=>[l[0],l]));
+const dxSelected=new Set(), dxExpanded=new Set();
+
+function dxGetNBirds(){const el=document.getElementById("dx_nbirds");const v=el?parseInt(el.value,10):5;return (isNaN(v)||v<1)?5:v;}
+function dxAgeFlag(d){const a=parseInt(document.getElementById("nv_age").value,10);if(isNaN(a))return false;return a<d.aMin||a>d.aMax;}
+function dxScoreAll(){
+  const rows=[];
+  for(const d of DISEASES){
+    let score=0; const hits=[];
+    for(const id of dxSelected){
+      const t=d.w[id]||0;
+      if(t>0){score+=t;hits.push([id,t]);}
+    }
+    if(score>0){hits.sort((a,b)=>b[1]-a[1]); rows.push({d,score,hits});}
+  }
+  rows.sort((a,b)=>b.score-a.score||a.d.ar.localeCompare(b.d.ar,"ar"));
+  return rows;
+}
+function dxScoreMap(rows){const m={};for(const r of rows)m[r.d.id]=r.score;return m;}
+function dxEvalComposites(rows){
+  const m=dxScoreMap(rows), fired=[];
+  for(const c of COMPOSITES){
+    const parts=c.parts.map(pid=>({id:pid,score:m[pid]||0}));
+    if(parts.every(p=>p.score>=c.minEach)) fired.push({c,parts,strength:Math.min(...parts.map(p=>p.score))});
+  }
+  fired.sort((a,b)=>b.strength-a.strength);
+  return fired;
+}
+function dxName(id){const d=DISEASES.find(x=>x.id===id);return d?d.ar:id;}
+
+function renderDxOrgans(){
+  const host=document.getElementById("dxOrgans"); if(!host)return;
+  host.innerHTML=ORGANS.map(o=>{
+    const items=LESIONS.filter(l=>l[1]===o.id);
+    return `<div class="organ" data-organ="${o.id}">
+      <button type="button" class="organ-h" onclick="dxToggleOrgan('${o.id}')">
+        <span>${o.ar}</span><span class="cnt" id="dxcnt_${o.id}"></span><span class="chev">›</span>
+      </button>
+      <div class="les-list">
+        ${items.map(l=>`<label class="les" data-les="${l[0]}">
+          <input type="checkbox" onchange="dxToggleLesion('${l[0]}',this.checked)">
+          <span class="txt">${l[2]}<span class="le">${l[3]}</span></span>
+        </label>`).join("")}
+      </div>
+    </div>`;
+  }).join("");
+}
+function dxToggleOrgan(id){
+  const el=document.querySelector(`.organ[data-organ="${id}"]`);
+  if(el) el.classList.toggle("open");
+}
+function dxJumpOrgan(id){
+  document.querySelectorAll(".organ").forEach(o=>o.classList.remove("open"));
+  const el=document.querySelector(`.organ[data-organ="${id}"]`);
+  if(el){el.classList.add("open"); el.scrollIntoView({behavior:"smooth",block:"start"});}
+}
+function dxExpandAll(){document.querySelectorAll(".organ").forEach(o=>o.classList.add("open"));}
+function dxCollapseAll(){document.querySelectorAll(".organ").forEach(o=>o.classList.remove("open"));}
+function dxToggleLesion(id,checked){
+  if(checked)dxSelected.add(id);else dxSelected.delete(id);
+  const el=document.querySelector(`.les[data-les="${id}"]`);
+  if(el)el.classList.toggle("on",checked);
+  updateDxCounts();
+  dxCompute();
+}
+function updateDxCounts(){
+  ORGANS.forEach(o=>{
+    const n=[...dxSelected].filter(id=>LES_BY_ID[id]&&LES_BY_ID[id][1]===o.id).length;
+    const el=document.getElementById("dxcnt_"+o.id);
+    if(el){el.textContent=n;el.classList.toggle("on",n>0);}
+  });
+}
+function dxFilter(q){
+  q=(q||"").trim().toLowerCase();
+  document.querySelectorAll(".les").forEach(el=>{
+    const l=LES_BY_ID[el.dataset.les];
+    const match=q&&((l[2]+" "+l[3]).toLowerCase().includes(q));
+    el.classList.toggle("hit",!!match);
+    el.style.display=(!q||match)?"":"none";
+  });
+  document.querySelectorAll(".organ").forEach(o=>{
+    if(!q){o.classList.remove("open");return;}
+    const anyMatch=[...o.querySelectorAll(".les")].some(el=>el.style.display!=="none");
+    o.classList.toggle("open",anyMatch);
+  });
+}
+function dxToggleWhy(id){if(dxExpanded.has(id))dxExpanded.delete(id);else dxExpanded.add(id);dxCompute();}
+function dxCompute(){
+  const rows=dxScoreAll();
+  const host=document.getElementById("dxResults");
+  if(!rows.length){host.innerHTML='<div class="dxempty">علّم على الآفات المشاهَدة في التشريح وسيظهر التشخيص المرجّح هنا.</div>';return;}
+  const top=rows[0], max=top.score, second=rows[1];
+  const gap=second?Math.round((1-second.score/top.score)*100):100;
+  const conf=gap>=40?"ترجيح قوي":gap>=15?"ترجيح متوسط — يُنصح بالتأكيد":"تفريقي متقارب — التأكيد المعملي ضروري";
+  let html=`<div class="prime">
+    <span class="tag">المشتبه الأول</span>
+    <div class="dz">${top.d.ar} <span class="en">${top.d.en}</span></div>
+    <div class="conf">قوة الدليل: <b>${top.score.toFixed(1)}</b> · ${conf} ${dxAgeFlag(top.d)?'· ⚠ غير معتاد لهذا العمر':''}</div>
+    <div class="test"><b>الاختبار التأكيدي:</b> ${top.d.test}</div>
+    ${TXPX[top.d.id]?`<div class="test"><b>العلاج:</b> ${TXPX[top.d.id].tx}</div><div class="test"><b>الوقاية:</b> ${TXPX[top.d.id].px}</div>`:''}
+    ${second?`<div class="gap">يليه: ${second.d.ar} (${second.score.toFixed(1)}) — الفارق ${gap}%</div>`:''}
+  </div>`;
+  const fired=dxEvalComposites(rows);
+  html+=fired.map(f=>`<div class="comp">
+    <span class="ct">متلازمة مركّبة</span>
+    <div class="cn">${f.c.ar} <span class="en">${f.c.en}</span></div>
+    <div class="cnote">${f.c.note}</div>
+    <div class="cnote"><b>التأكيد:</b> ${f.c.test}</div>
+  </div>`).join("");
+  html+=`<div class="rank">`+rows.map((r,idx)=>{
+    const pct=Math.round(r.score/max*100);
+    const warn=dxAgeFlag(r.d)?'<span class="agewarn">⚠ العمر</span>':"";
+    const why=r.hits.map(h=>`<div style="display:flex;justify-content:space-between"><span>${LES_BY_ID[h[0]][2]}</span><span style="font-weight:700">+${h[1].toFixed(1)}</span></div>`).join("");
+    return `<div class="cand${idx===0?' lead':''}${dxExpanded.has(r.d.id)?' exp':''}" onclick="dxToggleWhy('${r.d.id}')">
+      <div class="row"><span class="nm">${r.d.ar} <span class="en">${r.d.en}</span>${warn}</span><span class="pct">${r.score.toFixed(1)}</span></div>
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+      <div class="why"><div style="font-weight:700;margin-bottom:4px">الآفات المؤيِّدة:</div>${why}
+        <div style="margin-top:5px;padding-top:5px;border-top:1px dashed var(--line)"><b>التأكيد:</b> ${r.d.test}</div>
+        ${TXPX[r.d.id]?`<div><b>العلاج:</b> ${TXPX[r.d.id].tx}</div><div><b>الوقاية:</b> ${TXPX[r.d.id].px}</div>`:''}</div>
+    </div>`;
+  }).join("")+`</div>`;
+  host.innerHTML=html;
+}
+function dxReset(){
+  dxSelected.clear(); dxExpanded.clear();
+  document.querySelectorAll(".les input").forEach(cb=>cb.checked=false);
+  document.querySelectorAll(".les").forEach(el=>el.classList.remove("on","hit"));
+  document.querySelectorAll(".organ").forEach(o=>{o.classList.remove("open");o.style.display="";});
+  const s=document.getElementById("dxsearch"); if(s)s.value="";
+  updateDxCounts(); dxCompute();
+}
+
+let STATE = { clients:[], flocks:[], visits:[] };
+let currentClientDetailId = null;
+
+/* ---------------------- تسجيل الدخول ---------------------- */
+function doLogin(){
+  const email=document.getElementById("loginEmail").value.trim();
+  const pass=document.getElementById("loginPass").value;
+  document.getElementById("loginErr").textContent="";
+  auth.signInWithEmailAndPassword(email,pass).catch(e=>{
+    document.getElementById("loginErr").textContent="تعذّر الدخول: "+(e.message||e.code);
+  });
+}
+function doLogout(){ auth.signOut(); }
+auth.onAuthStateChanged(user=>{
+  if(user){
+    document.getElementById("loginBox").style.display="none";
+    document.getElementById("app").style.display="block";
+    document.getElementById("userBadge").textContent=user.email||"مستخدم";
+    startListeners();
+  }else{
+    document.getElementById("loginBox").style.display="block";
+    document.getElementById("app").style.display="none";
+  }
+});
+
+/* ---------------------- مستمعو Firestore (تزامن فوري بين الأجهزة) ---------------------- */
+function startListeners(){
+  fs.collection("clients").onSnapshot(snap=>{
+    STATE.clients = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderClients(); populateClientSelect(); renderOpenFlocks();
+    if(currentClientDetailId) renderClientDetail(currentClientDetailId);
+  });
+  fs.collection("flocks").onSnapshot(snap=>{
+    STATE.flocks = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderOpenFlocks();
+    if(currentClientDetailId) renderClientDetail(currentClientDetailId);
+  });
+  fs.collection("visits").orderBy("date","desc").onSnapshot(snap=>{
+    STATE.visits = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(currentClientDetailId) renderClientDetail(currentClientDetailId);
+  });
+}
+
+/* ---------------------- تبويبات ---------------------- */
+function showTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
+  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+  const map={clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail"};
+  document.getElementById(map[name]).classList.add("active");
+  if(name==="openflocks") renderOpenFlocks();
+}
+
+/* ---------------------- العملاء ---------------------- */
+async function addClient(){
+  const name=document.getElementById("cl_name").value.trim();
+  if(!name){alert("اكتب اسم العميل أولاً.");return;}
+  const data={
+    name, phone:document.getElementById("cl_phone").value.trim(),
+    address:document.getElementById("cl_address").value.trim(),
+    clientType:document.getElementById("cl_type").value,
+    birdType:document.getElementById("cl_birdtype").value,
+    createdAt:new Date().toISOString()
+  };
+  await fs.collection("clients").add(data);
+  document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";
+}
+function renderClients(){
+  const host=document.getElementById("clientsList");
+  const q=(document.getElementById("clientSearch")||{}).value?.trim().toLowerCase()||"";
+  const list=STATE.clients.filter(c=>!q||c.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
+  document.getElementById("clientCount").textContent="("+list.length+")";
+  if(!list.length){host.innerHTML='<p class="hint">لا يوجد عملاء بعد.</p>';return;}
+  host.innerHTML=list.map(c=>{
+    const openCount=STATE.flocks.filter(f=>f.clientId===c.id&&f.status==="open").length;
+    return `<div class="clientitem" onclick="openClientDetail('${c.id}')">
+      <div class="ci-t">${c.name}</div>
+      <div class="ci-s">
+        <span class="chip ${c.clientType==='monitoring'?'monitor':'visit'}">${c.clientType==='monitoring'?'متابعة':'زيارة'}</span>
+        <span class="chip closed">${BIRD_LABEL[c.birdType]||c.birdType}</span>
+        ${openCount?`<span class="chip open">${openCount} فوج مفتوح</span>`:''}
+        ${c.phone?' · '+c.phone:''}
+      </div>
+    </div>`;
+  }).join("");
+}
+function populateClientSelect(){
+  const sel=document.getElementById("nv_client");
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— اختر العميل —</option>'+
+    STATE.clients.slice().sort((a,b)=>a.name.localeCompare(b.name,"ar"))
+      .map(c=>`<option value="${c.id}">${c.name} (${BIRD_LABEL[c.birdType]||c.birdType})</option>`).join("");
+  if(cur)sel.value=cur;
+}
+function openClientDetail(id){ currentClientDetailId=id; renderClientDetail(id); showTab("clientdetail"); }
+function renderClientDetail(id){
+  const c=STATE.clients.find(x=>x.id===id); if(!c)return;
+  document.getElementById("cd_name").textContent=c.name;
+  document.getElementById("cd_meta").innerHTML=
+    `<span class="chip ${c.clientType==='monitoring'?'monitor':'visit'}">${c.clientType==='monitoring'?'عميل متابعة':'عميل زيارة'}</span>
+     <span class="chip closed">${BIRD_LABEL[c.birdType]||c.birdType}</span> ${c.phone||''} ${c.address?'· '+c.address:''}`;
+  const flocks=STATE.flocks.filter(f=>f.clientId===id).sort((a,b)=>new Date(b.placementDate)-new Date(a.placementDate));
+  const host=document.getElementById("cd_flocks");
+  if(!flocks.length){host.innerHTML='<p class="hint">لا توجد أفواج مسجّلة لهذا العميل بعد.</p>';return;}
+  host.innerHTML=flocks.map(f=>{
+    const visits=STATE.visits.filter(v=>v.flockId===f.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const cycleTxt=CYCLE_DAYS[f.birdType]?`دورة ${CYCLE_DAYS[f.birdType]} يوم`:"دورة مفتوحة";
+    return `<div class="flockitem">
+      <div class="ci-t">${f.houseName||'—'} <span class="small">(${f.flockCode})</span>
+        <span class="chip ${f.status==='open'?'open':'closed'}">${f.status==='open'?'مفتوح':'مغلق'}</span></div>
+      <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · ${cycleTxt} · عدد ابتدائي: ${f.birdCountInitial||'—'}</div>
+      ${f.status==='open'?`<div class="row"><button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الفوج (تسويق)</button></div>`:''}
+      <div class="row" style="margin-top:6px"><b class="small">الزيارات/المتابعات (${visits.length}):</b></div>
+      ${visits.map(v=>{
+        const dx=v.diagnosis;
+        const top=dx&&dx.topDiagnoses&&dx.topDiagnoses[0];
+        return `<div class="visititem">
+          <div class="ci-s"><b>${v.date}</b> — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
+            ${v.complaint?' · '+v.complaint:''}</div>
+          ${top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:''}
+          ${v.opinion?`<div class="small">📝 ${v.opinion}</div>`:''}
+        </div>`;
+      }).join("")}
+    </div>`;
+  }).join("");
+}
+async function closeFlock(flockId){
+  if(!confirm("تأكيد إغلاق/تسويق هذا الفوج؟ أي زيارة جديدة لنفس العنبر ستُنشئ فوجًا جديدًا."))return;
+  await fs.collection("flocks").doc(flockId).update({status:"closed",closedAt:new Date().toISOString()});
+}
+
+/* ---------------------- منطق مطابقة الفوج (استمرارية الزيارات) ---------------------- */
+function daysBetween(d1,d2){ return Math.round((new Date(d2)-new Date(d1))/864e5); }
+
+function findMatchingFlock(clientId, houseName, dateStr, ageDays, birdCount){
+  const client=STATE.clients.find(c=>c.id===clientId);
+  if(!client||!dateStr) return {match:null,reason:"missing"};
+  const candidates=STATE.flocks.filter(f=>f.clientId===clientId&&f.status==="open"&&
+    (!houseName || !f.houseName || f.houseName.trim()===houseName.trim()));
+  if(!candidates.length) return {match:null,reason:"none"};
+
+  let best=null, bestScore=-Infinity, warnings=[];
+  candidates.forEach(f=>{
+    let score=0, w=[];
+    const cycleDays=CYCLE_DAYS[f.birdType];
+    const daysSincePlacement=daysBetween(f.placementDate,dateStr);
+    if(cycleDays!=null && daysSincePlacement > cycleDays+10){ score-=100; w.push("تجاوز مدة الدورة المتوقعة"); }
+    if(ageDays!=null && ageDays!==""){
+      const impliedPlacement=new Date(new Date(dateStr).getTime()-ageDays*864e5).toISOString().slice(0,10);
+      const diff=Math.abs(daysBetween(impliedPlacement,f.placementDate));
+      if(diff<=TOLERANCE_DAYS) score+=50; else { score-=diff; w.push("العمر المُدخل لا يتوافق مع تاريخ تحميل هذا الفوج"); }
+    } else { score+=5; }
+    if(birdCount && f.birdCountInitial){
+      const rel=Math.abs(birdCount-f.birdCountInitial)/f.birdCountInitial;
+      if(rel<=BIRDCOUNT_TOLERANCE) score+=20; else { score-=30; w.push("فرق كبير في عدد الطيور عن الفوج المسجّل"); }
+    }
+    if(score>bestScore){bestScore=score;best=f;warnings=w;}
+  });
+  if(best && bestScore>-50) return {match:best,warnings,score:bestScore};
+  return {match:null,reason:"disqualified",warnings};
+}
+
+function onClientChangeForVisit(){ checkFlockMatch(); }
+
+function checkFlockMatch(){
+  const clientId=document.getElementById("nv_client").value;
+  const house=document.getElementById("nv_house").value;
+  const date=document.getElementById("nv_date").value;
+  const age=document.getElementById("nv_age").value?parseInt(document.getElementById("nv_age").value):null;
+  const birdCount=document.getElementById("nv_birdcount").value?parseInt(document.getElementById("nv_birdcount").value):null;
+  const banner=document.getElementById("flockMatchBanner");
+  const newFields=document.getElementById("newFlockFields");
+  if(!clientId||!date){ banner.innerHTML=""; newFields.style.display="none"; return; }
+
+  const {match,warnings}=findMatchingFlock(clientId,house,date,age,birdCount);
+  if(match){
+    newFields.style.display="none";
+    const dayOfCycle=daysBetween(match.placementDate,date);
+    banner.innerHTML=`<div class="banner match">✅ سيتم ربط هذه الزيارة بالفوج الحالي <b>${match.flockCode}</b>
+      (تحميل ${match.placementDate} — اليوم ${dayOfCycle} من الدورة).
+      ${warnings.length?'<br><span style="color:#8A241D">⚠ '+warnings.join(' · ')+'</span>':''}</div>`;
+    window.__matchedFlockId=match.id;
+  }else{
+    window.__matchedFlockId=null;
+    newFields.style.display="block";
+    const client=STATE.clients.find(c=>c.id===clientId);
+    if(client && !document.getElementById("nf_birdtype").dataset.touched) document.getElementById("nf_birdtype").value=client.birdType;
+    if(!document.getElementById("nf_placement").value && age!=null){
+      const implied=new Date(new Date(date).getTime()-age*864e5).toISOString().slice(0,10);
+      document.getElementById("nf_placement").value=implied;
+    }
+    banner.innerHTML=`<div class="banner new">🆕 لا يوجد فوج مفتوح مطابق لهذا العنبر ضمن نافذة الدورة الحالية — سيتم إنشاء <b>فوج جديد</b>.
+      ${warnings.length?'<br><span class="small">ملاحظة: '+warnings.join(' · ')+'</span>':''}</div>`;
+  }
+}
+
+/* ---------------------- السيرولوجي (صفوف ديناميكية) ---------------------- */
+let seroCount=0;
+function addSeroRow(){
+  seroCount++;
+  const id="sero"+seroCount;
+  const div=document.createElement("div");
+  div.className="serorow"; div.id=id;
+  div.innerHTML=`
+    <div class="field"><label>المرض</label><input class="s_disease" placeholder="نيوكاسل / جمبورو..."></div>
+    <div class="field"><label>الاختبار</label><select class="s_test"><option>HI</option><option>ELISA</option></select></div>
+    <div class="field"><label>العمر عند السحب</label><input class="s_age" type="number"></div>
+    <div class="field"><label>العيار GMT</label><input class="s_titer" inputmode="decimal"></div>
+    <div class="field"><label>CV%</label><input class="s_cv" inputmode="decimal"></div>
+    <button class="btn sm danger" onclick="document.getElementById('${id}').remove()">حذف</button>`;
+  document.getElementById("seroRows").appendChild(div);
+}
+function collectSero(){
+  return [...document.querySelectorAll(".serorow")].map(r=>({
+    disease:r.querySelector(".s_disease").value.trim(),
+    test:r.querySelector(".s_test").value,
+    age:r.querySelector(".s_age").value,
+    titer:r.querySelector(".s_titer").value,
+    cv:r.querySelector(".s_cv").value
+  })).filter(s=>s.disease||s.titer);
+}
+
+/* ---------------------- حفظ الزيارة ---------------------- */
+function genFlockCode(client,houseName,placementDate){
+  const initials=(client.name||"").replace(/\s+/g,"").slice(0,6);
+  return `${initials}-${(houseName||"H").replace(/\s+/g,"")}-${placementDate}`;
+}
+async function saveVisit(){
+  const clientId=document.getElementById("nv_client").value;
+  if(!clientId){alert("اختر العميل أولاً.");return;}
+  const date=document.getElementById("nv_date").value;
+  if(!date){alert("حدد تاريخ الزيارة.");return;}
+  const house=document.getElementById("nv_house").value.trim();
+  const age=document.getElementById("nv_age").value?parseInt(document.getElementById("nv_age").value):null;
+  const birdCount=document.getElementById("nv_birdcount").value?parseInt(document.getElementById("nv_birdcount").value):null;
+
+  let flockId=window.__matchedFlockId;
+  if(!flockId){
+    const client=STATE.clients.find(c=>c.id===clientId);
+    const placementDate=document.getElementById("nf_placement").value || date;
+    const birdType=document.getElementById("nf_birdtype").value;
+    const birdCount0=document.getElementById("nf_birdcount0").value?parseInt(document.getElementById("nf_birdcount0").value):birdCount;
+    const flockCode=genFlockCode(client,house,placementDate);
+    const ref=await fs.collection("flocks").add({
+      clientId, houseName:house, placementDate, birdType,
+      birdCountInitial:birdCount0||null, flockCode, status:"open",
+      createdAt:new Date().toISOString()
+    });
+    flockId=ref.id;
+  }
+
+  const dxRows=dxScoreAll();
+  const dxFired=dxEvalComposites(dxRows);
+  const diagnosis={
+    nbirds: dxGetNBirds(),
+    lesions: [...dxSelected],
+    topDiagnoses: dxRows.slice(0,3).map(r=>({id:r.d.id,ar:r.d.ar,en:r.d.en,score:+r.score.toFixed(1),test:r.d.test})),
+    composites: dxFired.map(f=>f.c.ar)
+  };
+
+  const visit={
+    flockId, clientId, date, ageDays:age, birdCount,
+    complaint:document.getElementById("v_complaint").value.trim(),
+    mortalityDaily:document.getElementById("v_mortd").value,
+    mortalityCum:document.getElementById("v_mortc").value,
+    feed:document.getElementById("v_feed").value,
+    production:document.getElementById("v_prod").value,
+    lastVaccine:document.getElementById("v_vacc").value,
+    opinion:document.getElementById("v_opinion").value.trim(),
+    diagnosis,
+    farmInspection:{
+      ventilation:document.getElementById("fi_vent").value,
+      ammonia:document.getElementById("fi_ammonia").value,
+      litterMoisture:document.getElementById("fi_litter").value,
+      density:document.getElementById("fi_density").value,
+      waterPh:document.getElementById("fi_ph").value,
+      biosecurity:document.getElementById("fi_biosec").value
+    },
+    serology:collectSero(),
+    createdAt:new Date().toISOString()
+  };
+  await fs.collection("visits").add(visit);
+
+  document.getElementById("saveMsg").textContent="✅ تم الحفظ بنجاح.";
+  ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion",
+   "fi_ammonia","fi_litter","fi_density","fi_ph","nv_house","nv_age","nv_birdcount",
+   "nf_placement","nf_birdcount0"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("v_feed").value=""; document.getElementById("fi_vent").value=""; document.getElementById("fi_biosec").value="";
+  document.getElementById("seroRows").innerHTML=""; seroCount=0;
+  document.getElementById("flockMatchBanner").innerHTML=""; document.getElementById("newFlockFields").style.display="none";
+  window.__matchedFlockId=null;
+  dxReset();
+  setTimeout(()=>document.getElementById("saveMsg").textContent="",4000);
+}
+
+/* ---------------------- الأفواج المفتوحة ---------------------- */
+function renderOpenFlocks(){
+  const host=document.getElementById("openFlocksList"); if(!host)return;
+  const open=STATE.flocks.filter(f=>f.status==="open");
+  if(!open.length){host.innerHTML='<p class="hint">لا توجد أفواج مفتوحة حاليًا.</p>';return;}
+  host.innerHTML=open.map(f=>{
+    const client=STATE.clients.find(c=>c.id===f.clientId);
+    const dayOfCycle=daysBetween(f.placementDate,new Date().toISOString().slice(0,10));
+    const cycleDays=CYCLE_DAYS[f.birdType];
+    const overdue=cycleDays&&dayOfCycle>cycleDays+10;
+    return `<div class="flockitem">
+      <div class="ci-t">${client?client.name:'—'} — ${f.houseName||'—'} <span class="small">(${f.flockCode})</span>
+        ${overdue?'<span class="chip warn">تجاوز مدة الدورة</span>':''}</div>
+      <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل ${f.placementDate} · اليوم ${dayOfCycle}${cycleDays?' من '+cycleDays:''}</div>
+      <div class="row"><button class="btn sm" onclick="openClientDetail('${f.clientId}')">فتح ملف العميل</button>
+        <button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الفوج</button></div>
+    </div>`;
+  }).join("");
+}
+
+/* ---------------------- تهيئة أداة التشخيص عند التحميل ---------------------- */
+renderDxOrgans(); updateDxCounts(); dxCompute();
+</script>
+</body>
+</html>
