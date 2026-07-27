@@ -275,6 +275,8 @@
       <h3>بيانات الزيارة / الحالة</h3>
       <div class="grid3">
         <div class="field"><label>الشكوى الرئيسية</label><input id="v_complaint"></div>
+        <div class="field"><label>حالة العينة المفحوصة</label>
+          <select id="v_samplestatus"><option value="">—</option><option value="alive">حية (فحص إكلينيكي)</option><option value="dead">نافقة (تشريح)</option></select></div>
         <div class="field"><label>النفوق اليومي %</label><input id="v_mortd" inputmode="decimal"></div>
         <div class="field"><label>النفوق التراكمي %</label><input id="v_mortc" inputmode="decimal"></div>
         <div class="field"><label>استهلاك العلف</label>
@@ -305,9 +307,15 @@
       <div id="learnedInsights"></div>
       <div class="field" style="margin-top:8px">
         <label>التشخيص المؤكَّد النهائي (بمعرفة الطبيب — بعد التحاليل/الحكم الإكلينيكي)</label>
-        <select id="v_confirmed">
-          <option value="">— لم يتأكد بعد —</option>
-        </select>
+        <p class="hint">ممكن تضيف أكتر من مرض في نفس الحالة (عدوى مشتركة، زي كلوستريديا مع إي كولاي، أو كلوستريديا مع كوكسيديا).</p>
+        <div class="row">
+          <select id="v_confirmed_pick" style="flex:1" onchange="document.getElementById('v_confirmed_custom').style.display=(this.value==='__other__'?'block':'none')">
+            <option value="">— اختر مرض —</option>
+          </select>
+          <button type="button" class="btn sm" onclick="addConfirmedDx()">+ إضافة</button>
+        </div>
+        <input id="v_confirmed_custom" style="display:none;margin-top:6px" placeholder="اكتب اسم المرض غير الموجود بالقائمة">
+        <div id="confirmedDxChips" style="margin-top:8px"></div>
       </div>
       <div class="field" style="margin-top:8px">
         <label>رأي الطبيب والخلاصة</label>
@@ -320,25 +328,31 @@
       </div>
       <div class="row" style="margin-top:6px">
         <label class="btn sm" style="cursor:pointer">📎 رفع صورة روشتة/تحاليل
-          <input type="file" accept="image/*" id="rx_file" style="display:none" onchange="onRxFileChosen(this.files[0])">
+          <input type="file" accept="image/*" id="rx_file" style="display:none" onchange="onPhotoChosen(this.files[0],'rx')">
         </label>
         <span id="rxStatus" class="small"></span>
         <button type="button" class="btn sm" onclick="previewPrescriptionPDF()">🖨 معاينة روشتة بالترويسة (PDF)</button>
       </div>
       <div id="rxPreviewWrap"></div>
+      <div class="row" style="margin-top:6px">
+        <label class="btn sm" style="cursor:pointer">🔬 رفع صورة تشريح
+          <input type="file" accept="image/*" id="necropsy_file" style="display:none" onchange="onPhotoChosen(this.files[0],'necropsy')">
+        </label>
+        <span id="necropsyStatus" class="small"></span>
+      </div>
 
       <hr class="divider">
       <h3>الأدوية الموصوفة في هذه الزيارة</h3>
       <p class="hint">حدد أيام إعطاء كل دواء — الأدوية اللي على نفس الأيام هتتجمع تلقائيًا تحت نفس عنوان الأيام في الروشتة المطبوعة، بالظبط زي الروشتة الورقية.</p>
-      <datalist id="m_amount_list">
-        <option value="ربع"><option value="نص"><option value="1"><option value="1 ونص"><option value="2"><option value="3"><option value="0.25"><option value="0.5">
-      </datalist>
       <div id="medRows"></div>
       <button type="button" class="btn sm" onclick="addMedRow()">+ إضافة دواء</button>
 
       <hr class="divider">
       <h3>الفحص الفني للمزرعة (اختياري)</h3>
       <div class="grid3">
+        <div class="field"><label>درجة الحرارة داخل العنبر (°م)</label><input id="fi_temp" inputmode="decimal" placeholder="مثال: 28"></div>
+        <div class="field"><label>الرطوبة النسبية %</label><input id="fi_humidity" inputmode="decimal" placeholder="مثال: 60"></div>
+        <div class="field"><label>برنامج الإضاءة (ساعات ضوء/يوم)</label><input id="fi_light" inputmode="decimal" placeholder="مثال: 18"></div>
         <div class="field"><label>نظام التهوية</label>
           <select id="fi_vent"><option value="">—</option><option>نفقي</option><option>عرضي</option><option>طبيعي</option><option>غير كافٍ</option></select></div>
         <div class="field"><label>الأمونيا (ppm)</label><input id="fi_ammonia" inputmode="decimal"></div>
@@ -376,7 +390,8 @@
       <div class="row" style="justify-content:space-between" id="cd_toolbar">
         <span class="backlink" onclick="showTab('clients')">→ رجوع لقائمة العملاء</span>
         <span class="row" style="gap:6px">
-          <button class="btn sm" onclick="printClientDetail()">🖨 حفظ PDF / طباعة</button>
+          <button class="btn sm pri" onclick="exportClientReportPDF(event)">📄 تقرير PDF بالترويسة</button>
+          <button class="btn sm" onclick="printClientDetail()">🖨 حفظ PDF / طباعة (بسيطة)</button>
           <button class="btn sm" onclick="shareClientWhatsApp()">💬 مشاركة واتساب</button>
           <button class="btn sm" onclick="exportClientExcel()">📊 تصدير Excel</button>
         </span>
@@ -1099,6 +1114,10 @@ function dxReset(){
   document.getElementById("rxStatus").textContent="";
   document.getElementById("rxPreviewWrap").innerHTML="";
   document.getElementById("rx_file").value="";
+  window.__necropsyURL=null;
+  document.getElementById("necropsyStatus").textContent="";
+  document.getElementById("necropsy_file").value="";
+  confirmedDxList=[]; renderConfirmedDxChips();
 }
 
 /* ---------------------- رفع صورة الروشتة/التحاليل (Firebase Storage) ---------------------- */
@@ -1123,19 +1142,21 @@ function compressImageFile(file, maxDim=1600, quality=0.75){
     reader.readAsDataURL(file);
   });
 }
-async function onRxFileChosen(file){
+async function onPhotoChosen(file,kind){
   if(!file)return;
-  const status=document.getElementById("rxStatus");
+  const statusId=kind==='necropsy'?"necropsyStatus":"rxStatus";
+  const status=document.getElementById(statusId);
   status.textContent="⏳ جارِ ضغط ورفع الصورة…";
   try{
     const originalKB=Math.round(file.size/1024);
     const blob=await compressImageFile(file);
     const compressedKB=Math.round(blob.size/1024);
-    const path=`prescriptions/${Date.now()}_${file.name.replace(/\.[^.]+$/,'')}.jpg`;
+    const folder=kind==='necropsy'?'necropsy':'prescriptions';
+    const path=`${folder}/${Date.now()}_${file.name.replace(/\.[^.]+$/,'')}.jpg`;
     const ref=storage.ref().child(path);
     await ref.put(blob, {contentType:"image/jpeg"});
     const url=await ref.getDownloadURL();
-    window.__rxURL=url;
+    if(kind==='necropsy') window.__necropsyURL=url; else window.__rxURL=url;
     status.innerHTML=`✅ تم الرفع (${originalKB}KB → ${compressedKB}KB) — <a href="${url}" target="_blank">عرض الصورة</a>`;
   }catch(e){
     status.textContent="❌ فشل الرفع: "+(e.message||e);
@@ -1295,10 +1316,12 @@ function formatMedLine(m){
   let parts=[`• ${m.drug}`];
   const dose=formatMedDose(m);
   if(dose) parts.push(dose);
+  if(m.pack) parts.push(`العبوة: ${m.pack}`);
   if(m.timing) parts.push(m.timing);
   if(m.extra) parts.push(m.extra);
   if(m.duration) parts.push(`لمدة ${m.duration} يوم`);
-  if(m.diseaseId) parts.push(`(${dxName(m.diseaseId)})`);
+  const diseaseLabel=m.diseaseCustom||(m.diseaseId?dxName(m.diseaseId):"");
+  if(diseaseLabel) parts.push(`(${diseaseLabel})`);
   return parts.join(" — ");
 }
 /* طباعة روشتة PDF لزيارة محفوظة سابقًا مباشرة من بياناتها (بدون الحاجة لفتح وضع التعديل) */
@@ -1590,17 +1613,19 @@ function renderClientDetail(id){
       ${visits.map(v=>{
         const dx=v.diagnosis;
         const top=dx&&dx.topDiagnoses&&dx.topDiagnoses[0];
-        const confirmed=v.confirmedDiagnosisId?DISEASES.find(d=>d.id===v.confirmedDiagnosisId):null;
+        const confirmed=confirmedDxLabels(v);
         const meds=v.medications||[];
         const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
         return `<div class="visititem">
-          <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':'<span class="chip closed">مزرعة</span>'} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
+          <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':'<span class="chip closed">مزرعة</span>'}${v.sampleStatus==='dead'?' <span class="chip warn">🔬 عينة نافقة</span>':v.sampleStatus==='alive'?' <span class="chip visit">🩺 عينة حية</span>':''} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
             ${v.complaint?' · '+v.complaint:''}</div>
           ${top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:''}
-          ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed.ar}</b></div>`:''}
-          ${meds.length?`<div class="small">💊 ${meds.map(m=>`${m.drug}${formatMedDose(m)?' — '+formatMedDose(m):''}${m.response?' ('+(RESP_LABEL[m.response]||m.response)+')':''}`).join('، ')}</div>`:''}
+          ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed}</b></div>`:''}
+          ${meds.length?`<div class="small">💊 ${meds.map(m=>`${formatMedShort(m)}${m.response?' ['+(RESP_LABEL[m.response]||m.response)+']':''}`).join('، ')}</div>`:''}
+          ${formatFarmInspection(v.farmInspection)?`<div class="small">🌡️ ${formatFarmInspection(v.farmInspection)}</div>`:''}
           ${v.opinion?`<div class="small">📝 ${v.opinion}</div>`:''}
           ${v.prescriptionUrl?`<div class="small">📎 <a href="${v.prescriptionUrl}" target="_blank">صورة الروشتة/التحاليل</a></div>`:''}
+          ${v.necropsyImageUrl?`<div class="small">🔬 <a href="${v.necropsyImageUrl}" target="_blank">صورة التشريح</a></div>`:''}
           <div class="row" style="margin-top:4px">
             <button class="btn sm" onclick="editVisit('${v.id}')">✏️ تعديل الزيارة</button>
             ${(meds.length||v.opinion||v.treatmentPlan)?`<button class="btn sm" onclick="printSavedVisitPrescription('${v.id}')">🖨️ روشتة PDF</button>`:''}
@@ -1654,13 +1679,44 @@ function printClientDetail(){
   renderClientDetail(currentClientDetailId); // تحديث فوري لضمان إن التقرير مش هيطبع فاضي أو بيانات قديمة
   window.print();
 }
+/* ملخص الفحص الفني للمزرعة (حرارة/رطوبة/إضاءة/تهوية/أمونيا/فرشة/كثافة/مياه/أمن حيوي) — عرض خام بدون تنبيهات حدود بعد */
+/* تُرجع نص الأمراض المؤكَّدة لزيارة معيّنة (تدعم أكتر من مرض/عدوى مشتركة)، مع التوافق مع البيانات القديمة (تشخيص واحد فقط) */
+function confirmedDxLabels(v){
+  if(v.confirmedDiagnoses&&v.confirmedDiagnoses.length) return v.confirmedDiagnoses.map(e=>e.label).join(' + ');
+  if(v.confirmedDiagnosisId){ const d=DISEASES.find(x=>x.id===v.confirmedDiagnosisId); return d?d.ar:""; }
+  return "";
+}
+/* عرض مختصر لدواء واحد (اسم + جرعة + عبوة + المرض المرتبط لو موجود) — مستخدم في كارت الزيارة والإكسيل وبانر متابعة الاستجابة */
+function formatMedShort(m){
+  const diseaseLabel=m.diseaseCustom||(m.diseaseId?dxName(m.diseaseId):"");
+  let s=m.drug;
+  const dose=formatMedDose(m);
+  if(dose) s+=' — '+dose;
+  if(m.pack) s+=' (عبوة: '+m.pack+')';
+  if(diseaseLabel) s+=' — '+diseaseLabel;
+  return s;
+}
+function formatFarmInspection(fi){
+  if(!fi)return "";
+  const parts=[];
+  if(fi.temperature)parts.push(`حرارة ${fi.temperature}°م`);
+  if(fi.humidity)parts.push(`رطوبة جوية ${fi.humidity}%`);
+  if(fi.lightHours)parts.push(`إضاءة ${fi.lightHours}س`);
+  if(fi.ventilation)parts.push(`تهوية: ${fi.ventilation}`);
+  if(fi.ammonia)parts.push(`أمونيا ${fi.ammonia}ppm`);
+  if(fi.litterMoisture)parts.push(`رطوبة فرشة ${fi.litterMoisture}%`);
+  if(fi.density)parts.push(`كثافة ${fi.density}/م²`);
+  if(fi.waterPh)parts.push(`pH مياه ${fi.waterPh}`);
+  if(fi.biosecurity)parts.push(`أمن حيوي: ${fi.biosecurity}`);
+  return parts.join(' · ');
+}
 function exportVisitsToExcel(visits, label){
   if(!visits.length){alert("لا توجد زيارات لتصديرها.");return;}
   const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
   const rows=visits.map(v=>{
     const flock=STATE.flocks.find(f=>f.id===v.flockId);
     const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
-    const confirmed=v.confirmedDiagnosisId?DISEASES.find(d=>d.id===v.confirmedDiagnosisId):null;
+    const confirmed=confirmedDxLabels(v);
     const meds=v.medications||[];
     return {
       "التاريخ":v.date,
@@ -1673,9 +1729,10 @@ function exportVisitsToExcel(visits, label){
       "الإنتاج %":v.production||"",
       "المشتبه الأول":top?top.ar:"",
       "قوة الترجيح":top?top.score:"",
-      "التشخيص المؤكد":confirmed?confirmed.ar:"",
-      "الأدوية الموصوفة":meds.map(m=>`${m.drug}${formatMedDose(m)?' ('+formatMedDose(m)+')':''}`).join(' ؛ '),
+      "التشخيص المؤكد":confirmed||"",
+      "الأدوية الموصوفة":meds.map(m=>formatMedShort(m)).join(' ؛ '),
       "استجابة العلاج":meds.map(m=>m.response?RESP_LABEL[m.response]||m.response:"").filter(Boolean).join(' ؛ '),
+      "الفحص الفني للمزرعة":formatFarmInspection(v.farmInspection),
       "رأي الطبيب":v.opinion||""
     };
   });
@@ -1684,6 +1741,104 @@ function exportVisitsToExcel(visits, label){
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"الزيارات");
   XLSX.writeFile(wb, `تقرير-${label}.xlsx`);
+}
+/* ============ تقرير PDF شامل بالترويسة لكل ملف العميل (كل الأفواج والزيارات) ============ */
+async function exportClientReportPDF(evt){
+  const id=currentClientDetailId; const client=STATE.clients.find(x=>x.id===id); if(!client){alert("افتح ملف العميل أولاً.");return;}
+  const flocks=STATE.flocks.filter(f=>f.clientId===id).sort((a,b)=>new Date(b.placementDate)-new Date(a.placementDate));
+  const visits=STATE.visits.filter(v=>v.clientId===id);
+  const btn=(evt||window.event)&&(evt||window.event).target; const oldTxt=btn?btn.textContent:"";
+  if(btn){btn.disabled=true; btn.textContent="⏳ جارِ تجهيز التقرير…";}
+  try{
+    const img=new Image(); img.src=LETTERHEAD_B64;
+    await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;});
+    const scale=2.4;
+    const W=Math.round(LETTERHEAD_IMG_W*scale), H=Math.round(LETTERHEAD_IMG_H*scale);
+    // بانر مصغّر (أعلى 11% من الترويسة فقط: الشعار + اسم المركز) بيتكرر في أعلى صفحات المتابعة
+    const bannerFrac=0.11;
+    const bannerCanvas=document.createElement("canvas");
+    bannerCanvas.width=LETTERHEAD_IMG_W; bannerCanvas.height=Math.round(LETTERHEAD_IMG_H*bannerFrac);
+    bannerCanvas.getContext("2d").drawImage(img,0,0,LETTERHEAD_IMG_W,bannerCanvas.height,0,0,LETTERHEAD_IMG_W,bannerCanvas.height);
+    const pages=[]; // كل عنصر: data URL لصفحة كاملة (jpeg)
+    let canvas, ctx, y, isFirstPage;
+
+    function newPage(first){
+      isFirstPage=first;
+      canvas=document.createElement("canvas"); canvas.width=W; canvas.height=H;
+      ctx=canvas.getContext("2d");
+      if(first){
+        ctx.drawImage(img,0,0,W,H);
+        y=H*0.29;
+      }else{
+        ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
+        ctx.drawImage(bannerCanvas,0,0,W,Math.round(H*bannerFrac));
+        y=H*bannerFrac+Math.round(20*scale);
+      }
+      ctx.direction="rtl"; ctx.textAlign="right"; ctx.fillStyle="#17322c";
+    }
+    function finalizePage(){ pages.push(canvas.toDataURL("image/jpeg",0.9)); }
+    const bottomLimit=H*0.94;
+    function ensureSpace(need){
+      if(y+need>bottomLimit){ finalizePage(); newPage(false); }
+    }
+    function line(text,{size=15,bold=false,gap=6,color="#17322c",maxWidthFrac=0.86}={}){
+      ctx.font=`${bold?"bold ":""}${Math.round(size*scale)}px Tahoma, Arial`;
+      ctx.fillStyle=color;
+      const lh=Math.round((size+4)*scale);
+      const words=(text||"").split(/\s+/).filter(Boolean);
+      let ln="";
+      const maxW=W*maxWidthFrac;
+      const chunks=[];
+      words.forEach(w=>{
+        const test=ln?ln+" "+w:w;
+        if(ctx.measureText(test).width>maxW && ln){ chunks.push(ln); ln=w; } else ln=test;
+      });
+      if(ln)chunks.push(ln);
+      chunks.forEach(c=>{ ensureSpace(lh); ctx.fillText(c, W*0.93, y); y+=lh; });
+      y+=Math.round(gap*scale);
+    }
+    function divider(){ ensureSpace(14*scale); ctx.strokeStyle="#DDE7E3"; ctx.beginPath(); ctx.moveTo(W*0.07,y); ctx.lineTo(W*0.93,y); ctx.stroke(); y+=Math.round(14*scale); }
+
+    newPage(true);
+    line(client.name, {size:22, bold:true, gap:3});
+    line(`${client.clientType==='monitoring'?'عميل متابعة':'عميل زيارة'}${client.birdType?' · '+(BIRD_LABEL[client.birdType]||client.birdType):''}${client.address?' · '+client.address:''}${client.phone?' · '+client.phone:''}`, {size:13, gap:10, color:"#5b6b66"});
+    const openCount=flocks.filter(f=>f.status!=="closed").length;
+    const lastVisit=visits.slice().sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    line(`إجمالي الأفواج: ${flocks.length}   ·   أفواج مفتوحة: ${openCount}   ·   آخر زيارة: ${lastVisit?lastVisit.date:'—'}`, {size:13, gap:14, color:"#5b6b66"});
+    divider();
+
+    flocks.forEach(f=>{
+      const fVisits=visits.filter(v=>v.flockId===f.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
+      line(`${f.houseName||f.flockCode}  —  ${f.status==='closed'?'مغلق':'مفتوح'}`, {size:17, bold:true, gap:2});
+      line(`${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · عدد ابتدائي: ${f.birdCountInitial||'—'}`, {size:12, gap:10, color:"#5b6b66"});
+      if(!fVisits.length){ line("لا توجد زيارات مسجّلة لهذا الفوج بعد.", {size:12, gap:10, color:"#8a8a8a"}); }
+      fVisits.forEach(v=>{
+        const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
+        const confirmed=confirmedDxLabels(v);
+        const meds=v.medications||[];
+        const sampleTxt=v.sampleStatus==='dead'?' [عينة نافقة]':v.sampleStatus==='alive'?' [عينة حية]':'';
+        line(`${v.date} — ${v.visitLocation==='lab'?'معمل':'مزرعة'}${sampleTxt} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}${v.complaint?' · '+v.complaint:''}`, {size:13, bold:true, gap:3});
+        if(top) line(`🔬 المشتبه الأول: ${top.ar} (${top.score})`, {size:12, gap:2});
+        if(confirmed) line(`✅ التشخيص المؤكَّد: ${confirmed}`, {size:12, gap:2, color:"#1c6b45"});
+        if(meds.length) line(`💊 ${meds.map(m=>formatMedShort(m)).join('، ')}`, {size:12, gap:2});
+        const fi=formatFarmInspection(v.farmInspection);
+        if(fi) line(`🌡️ ${fi}`, {size:11.5, gap:2, color:"#5b6b66"});
+        if(v.opinion) line(`📝 ${v.opinion}`, {size:12, gap:2});
+        if(v.treatmentPlan) line(`💉 خطة العلاج: ${v.treatmentPlan}`, {size:12, gap:2});
+        y+=Math.round(6*scale);
+      });
+      divider();
+    });
+
+    finalizePage();
+    const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
+    pages.forEach((dataUrl,i)=>{ if(i>0)pdf.addPage(); pdf.addImage(dataUrl,"JPEG",0,0,210,297); });
+    pdf.save(`تقرير-${client.name}-${new Date().toISOString().slice(0,10)}.pdf`);
+  }catch(e){
+    alert("⚠ تعذّر توليد التقرير: "+(e.message||e));
+  }finally{
+    if(btn){btn.disabled=false; btn.textContent=oldTxt;}
+  }
 }
 function exportFlockExcel(flockId){
   const f=STATE.flocks.find(x=>x.id===flockId); if(!f)return;
@@ -1706,15 +1861,16 @@ function exportAllStatsExcel(){
     const client=STATE.clients.find(c=>c.id===v.clientId);
     const flock=STATE.flocks.find(f=>f.id===v.flockId);
     const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
-    const confirmed=v.confirmedDiagnosisId?DISEASES.find(d=>d.id===v.confirmedDiagnosisId):null;
+    const confirmed=confirmedDxLabels(v);
     const meds=v.medications||[];
     return {
       "التاريخ":v.date, "العميل":client?client.name:"", "الفوج":flock?flock.flockCode:"",
       "نوع الطائر":flock?(BIRD_LABEL[flock.birdType]||flock.birdType):"",
       "العمر (يوم)":v.ageDays??"", "عدد الطيور":v.birdCount??"",
       "النفوق اليومي %":v.mortalityDaily||"", "النفوق التراكمي %":v.mortalityCum||"",
-      "المشتبه الأول":top?top.ar:"", "التشخيص المؤكد":confirmed?confirmed.ar:"",
-      "الأدوية الموصوفة":meds.map(m=>`${m.drug}${formatMedDose(m)?' ('+formatMedDose(m)+')':''}`).join(' ؛ ')
+      "المشتبه الأول":top?top.ar:"", "التشخيص المؤكد":confirmed||"",
+      "الأدوية الموصوفة":meds.map(m=>formatMedShort(m)).join(' ؛ '),
+      "الفحص الفني للمزرعة":formatFarmInspection(v.farmInspection)
     };
   });
   const wsAll=XLSX.utils.json_to_sheet(allRows);
@@ -1881,7 +2037,7 @@ function renderPendingMedResponses(flockId){
   host.innerHTML=`<div class="banner warn">
     <b>💊 تقييم استجابة العلاج الموصوف في زيارة ${prevVisit.date}:</b>
     ${pending.map((m,i)=>`<div class="row" style="margin-top:6px">
-      <span class="small">${m.drug}${formatMedDose(m)?' ('+formatMedDose(m)+')':''}${m.diseaseId?' — '+dxName(m.diseaseId):''}</span>
+      <span class="small">${formatMedShort(m)}</span>
       <select id="medresp_${i}" data-idx="${i}">
         <option value="">لم يُقيَّم بعد</option>
         <option value="excellent">استجابة ممتازة</option>
@@ -1902,28 +2058,18 @@ function addMedRow(){
   const div=document.createElement("div");
   div.className="medcard"; div.id=id;
   const diseaseOptions='<option value="">— بدون ربط بمرض —</option>'+
-    DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("");
+    DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("")+
+    '<option value="__other__">أخرى (اكتب اسم المرض)…</option>';
   div.innerHTML=`
-    <div class="grid2">
+    <div class="grid3">
       <div class="field"><label>اسم الدواء</label><input class="m_drug" oninput="onMedRowInput('${id}')"></div>
-      <div class="field"><label>مرتبط بمرض</label><select class="m_disease" onchange="onMedRowInput('${id}')">${diseaseOptions}</select></div>
+      <div class="field"><label>الجرعة</label><input class="m_dose" placeholder="مثال: 1 جم/لتر ماء لمدة 4 أيام"></div>
+      <div class="field"><label>العبوة</label><input class="m_pack" placeholder="مثال: علبة 100 جم"></div>
     </div>
-    <div class="grid4" style="margin-top:6px">
-      <div class="field"><label>الكمية</label><input class="m_amount" list="m_amount_list" placeholder="1 / نص / ربع"></div>
-      <div class="field"><label>الوحدة</label>
-        <select class="m_unit"><option value="">—</option><option>جم</option><option>سم</option><option>كجم</option><option>مل</option><option>علبة</option></select></div>
-      <div class="field"><label>لكل (كمية)</label><input class="m_perqty" list="m_amount_list" placeholder="1 / نص"></div>
-      <div class="field"><label>لكل</label>
-        <select class="m_per"><option value="">—</option><option>لتر ماء</option><option>كيلو عليقة</option><option>طن عليقة</option><option>طن مياه</option><option>رأس (حقن)</option></select></div>
-    </div>
-    <div class="grid3" style="margin-top:6px">
-      <div class="field"><label>التوقيت</label>
-        <select class="m_timing"><option value="">—</option><option>الصبح</option><option>الضهر</option><option>العصر</option><option>العشاء</option><option>طوال اليوم</option><option>جرعة واحدة</option></select></div>
-      <div class="field"><label>المدة (أيام)</label><input class="m_duration" type="number" min="1"></div>
-      <div class="field"><label>تفاصيل إضافية (اختياري)</label><input class="m_extra" placeholder="مثال: كل 8 ساعات"></div>
-    </div>
-    <div class="field" style="margin-top:6px"><label>أيام الإعطاء (اختياري — سيب فاضي يعني كل يوم)</label>
-      <div class="daypick">${DAY_NAMES.map((d,i)=>`<button type="button" class="daybtn" data-i="${i}" onclick="toggleMedDay('${id}',${i})">${d}</button>`).join("")}</div>
+    <div class="field" style="margin-top:6px">
+      <label>مرتبط بمرض</label>
+      <select class="m_disease" onchange="onMedDiseaseChange('${id}')">${diseaseOptions}</select>
+      <input class="m_disease_other" style="display:none;margin-top:6px" placeholder="اكتب اسم المرض" oninput="onMedRowInput('${id}')">
     </div>
     <div class="row" style="margin-top:8px;justify-content:space-between">
       <div class="small m_note"></div>
@@ -1931,22 +2077,17 @@ function addMedRow(){
     </div>`;
   document.getElementById("medRows").appendChild(div);
 }
-function toggleMedDay(rowId,i){
+function onMedDiseaseChange(rowId){
   const row=document.getElementById(rowId); if(!row)return;
-  const btn=row.querySelector(`.daybtn[data-i="${i}"]`);
-  btn.classList.toggle("on");
-}
-function setMedDays(rowId,days){
-  const row=document.getElementById(rowId); if(!row)return;
-  (days||[]).forEach(i=>{ const btn=row.querySelector(`.daybtn[data-i="${i}"]`); if(btn)btn.classList.add("on"); });
-}
-function getMedDays(row){
-  return [...row.querySelectorAll(".daybtn.on")].map(b=>parseInt(b.dataset.i));
+  const isOther=row.querySelector(".m_disease").value==="__other__";
+  row.querySelector(".m_disease_other").style.display=isOther?"block":"none";
+  onMedRowInput(rowId);
 }
 function onMedRowInput(rowId){
   const row=document.getElementById(rowId); if(!row)return;
   const drug=row.querySelector(".m_drug").value.trim();
-  const diseaseId=row.querySelector(".m_disease").value || document.getElementById("v_confirmed").value;
+  const selVal=row.querySelector(".m_disease").value;
+  const diseaseId=(selVal&&selVal!=="__other__"?selVal:"") || (confirmedDxList[0]&&confirmedDxList[0].id) || "";
   const note=row.querySelector(".m_note");
   if(!drug||!diseaseId){note.textContent="";return;}
   const stats=getDrugResponseStats(diseaseId,drug);
@@ -1960,7 +2101,7 @@ function onMedRowInput(rowId){
     note.style.color="var(--ok)";
   }
 }
-/* بيبني نص الجرعة المطبوع من الحقول المنظّمة، مع التوافق مع بيانات قديمة كانت متسجّلة كنص حر في dose */
+/* بيبني نص الجرعة المطبوع، مع التوافق مع بيانات قديمة كانت متسجّلة بالحقول المفصّلة القديمة (كمية/وحدة/لكل) */
 function formatMedDose(m){
   if(m.amount||m.unit||m.per||m.perqty){
     let s=`${m.amount||''} ${m.unit||''}`.trim();
@@ -1971,19 +2112,18 @@ function formatMedDose(m){
   return m.dose||"";
 }
 function collectMeds(){
-  return [...document.querySelectorAll("#medRows .medcard")].map(r=>({
-    drug:r.querySelector(".m_drug").value.trim(),
-    amount:r.querySelector(".m_amount").value.trim(),
-    unit:r.querySelector(".m_unit").value,
-    perqty:r.querySelector(".m_perqty").value.trim(),
-    per:r.querySelector(".m_per").value,
-    timing:r.querySelector(".m_timing").value,
-    duration:r.querySelector(".m_duration").value.trim(),
-    extra:r.querySelector(".m_extra").value.trim(),
-    days:getMedDays(r),
-    diseaseId:r.querySelector(".m_disease").value,
-    response:""
-  })).filter(m=>m.drug);
+  return [...document.querySelectorAll("#medRows .medcard")].map(r=>{
+    const selVal=r.querySelector(".m_disease").value;
+    const isOther=selVal==="__other__";
+    return {
+      drug:r.querySelector(".m_drug").value.trim(),
+      dose:r.querySelector(".m_dose").value.trim(),
+      pack:r.querySelector(".m_pack").value.trim(),
+      diseaseId:isOther?"":selVal,
+      diseaseCustom:isOther?r.querySelector(".m_disease_other").value.trim():"",
+      response:""
+    };
+  }).filter(m=>m.drug);
 }
 
 /* ---------------------- محرك التعلّم من الحالات المؤكَّدة (حد أدنى 5 حالات) ---------------------- */
@@ -2023,9 +2163,38 @@ function renderLearnedInsights(){
   }
 }
 function populateConfirmedDiagnosisSelect(){
-  const sel=document.getElementById("v_confirmed"); if(!sel)return;
-  sel.innerHTML='<option value="">— لم يتأكد بعد —</option>'+
-    DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("");
+  const sel=document.getElementById("v_confirmed_pick"); if(!sel)return;
+  sel.innerHTML='<option value="">— اختر مرض —</option>'+
+    DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("")+
+    '<option value="__other__">أخرى (اكتب اسم المرض)…</option>';
+}
+/* قائمة الأمراض المؤكَّدة لنفس الزيارة (بتدعم أكتر من مرض/عدوى مشتركة) — كل عنصر {id, label} حيث id فارغ لو مرض مكتوب حر */
+let confirmedDxList=[];
+function addConfirmedDx(){
+  const sel=document.getElementById("v_confirmed_pick");
+  const val=sel.value;
+  if(!val)return;
+  let entry;
+  if(val==="__other__"){
+    const custom=document.getElementById("v_confirmed_custom").value.trim();
+    if(!custom){alert("اكتب اسم المرض أولاً.");return;}
+    entry={id:null,label:custom};
+    document.getElementById("v_confirmed_custom").value="";
+  }else{
+    const d=DISEASES.find(x=>x.id===val);
+    entry={id:val,label:d?d.ar:val};
+  }
+  if(confirmedDxList.some(e=>e.label===entry.label))return; // تجنّب تكرار نفس المرض
+  confirmedDxList.push(entry);
+  sel.value=""; document.getElementById("v_confirmed_custom").style.display="none";
+  renderConfirmedDxChips();
+}
+function removeConfirmedDx(i){ confirmedDxList.splice(i,1); renderConfirmedDxChips(); }
+function renderConfirmedDxChips(){
+  const host=document.getElementById("confirmedDxChips"); if(!host)return;
+  host.innerHTML=confirmedDxList.map((e,i)=>
+    `<span class="chip visit" style="margin-bottom:4px">${e.label} <a href="javascript:void(0)" onclick="removeConfirmedDx(${i})" style="color:#B3261E;font-weight:900">✕</a></span>`
+  ).join(" ");
 }
 let seroCount=0;
 function addSeroRow(){
@@ -2147,11 +2316,17 @@ async function saveVisitInner(clientId,date){
     lastVaccine:document.getElementById("v_vacc").value,
     opinion:document.getElementById("v_opinion").value.trim(),
     treatmentPlan:document.getElementById("v_txplan").value.trim(),
-    confirmedDiagnosisId: document.getElementById("v_confirmed").value || null,
+    confirmedDiagnoses: confirmedDxList.slice(),
+    confirmedDiagnosisId: (confirmedDxList[0]&&confirmedDxList[0].id) || null, // للتوافق مع البيانات القديمة وحسابات الإحصاء
     prescriptionUrl: window.__rxURL || null,
+    necropsyImageUrl: window.__necropsyURL || null,
+    sampleStatus: document.getElementById("v_samplestatus").value || null,
     diagnosis,
     medications: collectMeds(),
     farmInspection:{
+      temperature:document.getElementById("fi_temp").value,
+      humidity:document.getElementById("fi_humidity").value,
+      lightHours:document.getElementById("fi_light").value,
       ventilation:document.getElementById("fi_vent").value,
       ammonia:document.getElementById("fi_ammonia").value,
       litterMoisture:document.getElementById("fi_litter").value,
@@ -2190,10 +2365,10 @@ async function saveVisitInner(clientId,date){
   }
 
   ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion","v_txplan",
-   "fi_ammonia","fi_litter","fi_density","fi_ph","nv_house","nv_age","nv_birdcount",
+   "fi_ammonia","fi_litter","fi_density","fi_ph","fi_temp","fi_humidity","fi_light","nv_house","nv_age","nv_birdcount",
    "nf_placement","nf_birdcount0"].forEach(id=>document.getElementById(id).value="");
-  document.getElementById("v_feed").value=""; document.getElementById("fi_vent").value=""; document.getElementById("fi_biosec").value="";
-  document.getElementById("v_confirmed").value=""; document.getElementById("nv_location").value="farm";
+  document.getElementById("v_feed").value=""; document.getElementById("fi_vent").value=""; document.getElementById("fi_biosec").value=""; document.getElementById("v_samplestatus").value="";
+  confirmedDxList=[]; renderConfirmedDxChips(); document.getElementById("nv_location").value="farm";
   document.getElementById("seroRows").innerHTML=""; seroCount=0;
   document.getElementById("medRows").innerHTML=""; medCount=0;
   document.getElementById("flockMatchBanner").innerHTML=""; document.getElementById("newFlockFields").style.display="none";
@@ -2223,8 +2398,19 @@ function editVisit(id){
   document.getElementById("v_opinion").value=v.opinion||"";
   document.getElementById("v_txplan").value=v.treatmentPlan||"";
   document.getElementById("nv_location").value=v.visitLocation||"farm";
-  document.getElementById("v_confirmed").value=v.confirmedDiagnosisId||"";
+  if(v.confirmedDiagnoses&&v.confirmedDiagnoses.length){
+    confirmedDxList=v.confirmedDiagnoses.slice();
+  }else if(v.confirmedDiagnosisId){
+    const d=DISEASES.find(x=>x.id===v.confirmedDiagnosisId);
+    confirmedDxList=[{id:v.confirmedDiagnosisId,label:d?d.ar:v.confirmedDiagnosisId}];
+  }else{
+    confirmedDxList=[];
+  }
+  renderConfirmedDxChips();
   const fi=v.farmInspection||{};
+  document.getElementById("fi_temp").value=fi.temperature||"";
+  document.getElementById("fi_humidity").value=fi.humidity||"";
+  document.getElementById("fi_light").value=fi.lightHours||"";
   document.getElementById("fi_vent").value=fi.ventilation||"";
   document.getElementById("fi_ammonia").value=fi.ammonia||"";
   document.getElementById("fi_litter").value=fi.litterMoisture||"";
@@ -2260,6 +2446,9 @@ function editVisit(id){
   });
   window.__rxURL=v.prescriptionUrl||null;
   document.getElementById("rxStatus").innerHTML=v.prescriptionUrl?`📎 <a href="${v.prescriptionUrl}" target="_blank">الصورة المرفوعة سابقًا</a>`:"";
+  window.__necropsyURL=v.necropsyImageUrl||null;
+  document.getElementById("necropsyStatus").innerHTML=v.necropsyImageUrl?`🔬 <a href="${v.necropsyImageUrl}" target="_blank">صورة التشريح المرفوعة سابقًا</a>`:"";
+  document.getElementById("v_samplestatus").value=v.sampleStatus||"";
 
   document.getElementById("medRows").innerHTML=""; medCount=0;
   (v.medications||[]).forEach(m=>{
@@ -2267,15 +2456,15 @@ function editVisit(id){
     const row=document.getElementById("medRows").lastElementChild;
     if(row){
       row.querySelector(".m_drug").value=m.drug||"";
-      row.querySelector(".m_amount").value=m.amount||"";
-      row.querySelector(".m_unit").value=m.unit||"";
-      row.querySelector(".m_perqty").value=m.perqty||"";
-      row.querySelector(".m_per").value=m.per||"";
-      row.querySelector(".m_timing").value=m.timing||"";
-      row.querySelector(".m_duration").value=m.duration||"";
-      row.querySelector(".m_extra").value=m.extra|| (!m.amount&&!m.unit&&m.dose? m.dose:"") ||""; // توافق مع بيانات قديمة كانت جرعتها نص حر بس
-      if(m.diseaseId)row.querySelector(".m_disease").value=m.diseaseId;
-      if(m.days&&m.days.length)setMedDays(row.id,m.days);
+      row.querySelector(".m_dose").value=formatMedDose(m); // بيدمج القيم القديمة (كمية/وحدة/لكل) في نص جرعة واحد لو الزيارة قديمة
+      row.querySelector(".m_pack").value=m.pack||"";
+      if(m.diseaseCustom){
+        row.querySelector(".m_disease").value="__other__";
+        row.querySelector(".m_disease_other").style.display="block";
+        row.querySelector(".m_disease_other").value=m.diseaseCustom;
+      }else if(m.diseaseId){
+        row.querySelector(".m_disease").value=m.diseaseId;
+      }
     }
   });
   document.getElementById("pendingMedResponses").innerHTML="";
