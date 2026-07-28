@@ -275,8 +275,9 @@
       <h3>بيانات الزيارة / الحالة</h3>
       <div class="grid3">
         <div class="field"><label>الشكوى الرئيسية</label><input id="v_complaint"></div>
-        <div class="field"><label>حالة العينة المفحوصة</label>
-          <select id="v_samplestatus"><option value="">—</option><option value="alive">حية (فحص إكلينيكي)</option><option value="dead">نافقة (تشريح)</option></select></div>
+        <div class="field"><label>عدد العينات الحية (فحص إكلينيكي)</label><input id="v_sample_alive" type="number" min="0" inputmode="numeric" oninput="updateSampleTotal()"></div>
+        <div class="field"><label>عدد العينات النافقة (تشريح)</label><input id="v_sample_dead" type="number" min="0" inputmode="numeric" oninput="updateSampleTotal()"></div>
+        <div class="field"><label>إجمالي العينة</label><input id="v_sample_total" disabled></div>
         <div class="field"><label>النفوق اليومي %</label><input id="v_mortd" inputmode="decimal"></div>
         <div class="field"><label>النفوق التراكمي %</label><input id="v_mortc" inputmode="decimal"></div>
         <div class="field"><label>استهلاك العلف</label>
@@ -946,6 +947,11 @@ ORGANS.forEach(o=>LESIONS.push([o.id+"_normal",o.id,"طبيعي / سليم (تم
 const LES_BY_ID=Object.fromEntries(LESIONS.map(l=>[l[0],l]));
 const dxSelected=new Set(), dxExpanded=new Set(), dxPrev={};
 
+function updateSampleTotal(){
+  const a=parseInt(document.getElementById("v_sample_alive").value,10)||0;
+  const d=parseInt(document.getElementById("v_sample_dead").value,10)||0;
+  document.getElementById("v_sample_total").value=(a+d)||"";
+}
 function dxGetNBirds(){const el=document.getElementById("dx_nbirds");const v=el?parseInt(el.value,10):5;return (isNaN(v)||v<1)?5:v;}
 function dxPrevP(id){const N=dxGetNBirds();const c=dxPrev[id]!=null?Math.min(dxPrev[id],N):N;return c/N;}
 function dxFloorFor(t){return t>=4?0.75:t>=3?0.7:t===2?0.5:0.25;}
@@ -1009,7 +1015,7 @@ function renderDxOrgans(){
         <div class="les" data-les="${l[0]}">
           <label class="lesmain"><input type="checkbox" onchange="dxToggleLesion('${l[0]}',this.checked)">
             <span class="txt">${l[2]}<span class="le">${l[3]}</span></span></label>
-          ${isN?"":`<select class="prevsel" data-prev="${l[0]}" onchange="dxSetPrev('${l[0]}',this.value)" title="عدد الطيور التي ظهرت فيها الآفة"></select>`}
+        ${`<select class="prevsel" data-prev="${l[0]}" onchange="dxSetPrev('${l[0]}',this.value)" title="عدد الطيور التي ظهرت فيها هذه الحالة"></select>`}
         </div>`;}).join("")}
       </div>
     </div>`;
@@ -1030,12 +1036,8 @@ function dxToggleLesion(id,checked){
   const row=document.querySelector(`.les[data-les="${id}"]`);
   if(checked){
     dxSelected.add(id);
-    if(!id.endsWith("_normal")&&dxPrev[id]==null)dxPrev[id]=dxGetNBirds();
+    if(dxPrev[id]==null)dxPrev[id]=dxGetNBirds();
     if(row)row.classList.add("on");
-    const org=LES_BY_ID[id][1];
-    const uncheck=lid=>{dxSelected.delete(lid);delete dxPrev[lid];const cb=document.querySelector(`.les[data-les="${lid}"] input`);if(cb)cb.checked=false;const rw=document.querySelector(`.les[data-les="${lid}"]`);if(rw)rw.classList.remove("on");};
-    if(id.endsWith("_normal")){ LESIONS.filter(l=>l[1]===org&&l[0]!==id&&dxSelected.has(l[0])).forEach(l=>uncheck(l[0])); }
-    else { const nid=org+"_normal"; if(dxSelected.has(nid))uncheck(nid); }
   } else {
     dxSelected.delete(id); delete dxPrev[id];
     if(row)row.classList.remove("on");
@@ -1618,7 +1620,7 @@ function renderClientDetail(id){
         const meds=v.medications||[];
         const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
         return `<div class="visititem">
-          <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':'<span class="chip closed">مزرعة</span>'}${v.sampleStatus==='dead'?' <span class="chip warn">🔬 عينة نافقة</span>':v.sampleStatus==='alive'?' <span class="chip visit">🩺 عينة حية</span>':''} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
+          <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':'<span class="chip closed">مزرعة</span>'}${(v.sampleAlive||v.sampleDead)?` <span class="chip visit">🧪 عينة ${((v.sampleAlive||0)+(v.sampleDead||0))}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}</span>`:''} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
             ${v.complaint?' · '+v.complaint:''}</div>
           ${top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:''}
           ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed}</b></div>`:''}
@@ -1821,7 +1823,7 @@ async function exportClientReportPDF(evt){
         const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
         const confirmed=confirmedDxLabels(v);
         const meds=v.medications||[];
-        const sampleTxt=v.sampleStatus==='dead'?' [عينة نافقة]':v.sampleStatus==='alive'?' [عينة حية]':'';
+        const sampleTxt=(v.sampleAlive||v.sampleDead)?` [عينة ${(v.sampleAlive||0)+(v.sampleDead||0)}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}]`:'';
         line(`${v.date} — ${v.visitLocation==='lab'?'معمل':'مزرعة'}${sampleTxt} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}${v.complaint?' · '+v.complaint:''}`, {size:16, bold:true, gap:5});
         if(top) line(`🔬 المشتبه الأول: ${top.ar} (${top.score})`, {size:15, gap:3});
         if(confirmed) line(`✅ التشخيص المؤكَّد: ${confirmed}`, {size:15, gap:3, color:"#1c6b45"});
@@ -2325,7 +2327,8 @@ async function saveVisitInner(clientId,date){
     confirmedDiagnosisId: (confirmedDxList[0]&&confirmedDxList[0].id) || null, // للتوافق مع البيانات القديمة وحسابات الإحصاء
     prescriptionUrl: window.__rxURL || null,
     necropsyImageUrl: window.__necropsyURL || null,
-    sampleStatus: document.getElementById("v_samplestatus").value || null,
+    sampleAlive: document.getElementById("v_sample_alive").value?parseInt(document.getElementById("v_sample_alive").value):null,
+    sampleDead: document.getElementById("v_sample_dead").value?parseInt(document.getElementById("v_sample_dead").value):null,
     diagnosis,
     medications: collectMeds(),
     farmInspection:{
@@ -2372,7 +2375,7 @@ async function saveVisitInner(clientId,date){
   ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion","v_txplan",
    "fi_ammonia","fi_litter","fi_density","fi_ph","fi_temp","fi_humidity","fi_light","nv_house","nv_age","nv_birdcount",
    "nf_placement","nf_birdcount0"].forEach(id=>document.getElementById(id).value="");
-  document.getElementById("v_feed").value=""; document.getElementById("fi_vent").value=""; document.getElementById("fi_biosec").value=""; document.getElementById("v_samplestatus").value="";
+  document.getElementById("v_feed").value=""; document.getElementById("fi_vent").value=""; document.getElementById("fi_biosec").value=""; document.getElementById("v_sample_alive").value=""; document.getElementById("v_sample_dead").value=""; document.getElementById("v_sample_total").value="";
   confirmedDxList=[]; renderConfirmedDxChips(); document.getElementById("nv_location").value="farm";
   document.getElementById("seroRows").innerHTML=""; seroCount=0;
   document.getElementById("medRows").innerHTML=""; medCount=0;
@@ -2453,7 +2456,9 @@ function editVisit(id){
   document.getElementById("rxStatus").innerHTML=v.prescriptionUrl?`📎 <a href="${v.prescriptionUrl}" target="_blank">الصورة المرفوعة سابقًا</a>`:"";
   window.__necropsyURL=v.necropsyImageUrl||null;
   document.getElementById("necropsyStatus").innerHTML=v.necropsyImageUrl?`🔬 <a href="${v.necropsyImageUrl}" target="_blank">صورة التشريح المرفوعة سابقًا</a>`:"";
-  document.getElementById("v_samplestatus").value=v.sampleStatus||"";
+  document.getElementById("v_sample_alive").value=v.sampleAlive??"";
+  document.getElementById("v_sample_dead").value=v.sampleDead??"";
+  updateSampleTotal();
 
   document.getElementById("medRows").innerHTML=""; medCount=0;
   (v.medications||[]).forEach(m=>{
