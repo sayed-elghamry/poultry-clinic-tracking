@@ -202,7 +202,12 @@
       <h2>إضافة عميل جديد</h2>
       <div class="grid3">
         <div class="field"><label>اسم العميل / المزرعة</label><input id="cl_name"></div>
-        <div class="field"><label>الهاتف</label><input id="cl_phone"></div>
+        <div class="field"><label>الهاتف</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="cl_phone" style="flex:1">
+            <button type="button" class="btn sm" title="اختيار من جهات الاتصال" onclick="pickClientPhone()" style="flex:0 0 auto;padding:6px 10px">📇</button>
+          </div>
+        </div>
         <div class="field"><label>العنوان</label><input id="cl_address"></div>
       </div>
       <div class="grid3" style="margin-top:8px">
@@ -246,7 +251,8 @@
       </div>
       <div class="grid3" style="margin-top:8px">
         <div class="field"><label>تاريخ الزيارة</label><input id="nv_date" type="date" onchange="checkFlockMatch()"></div>
-        <div class="field"><label>عمر الدورة (يوم)</label><input id="nv_age" type="number" min="0" oninput="checkFlockMatch()"></div>
+        <div class="field"><label>عمر الدورة (يوم)</label><input id="nv_age" type="number" min="0" oninput="checkFlockMatch()">
+          <span id="placementCalc" class="hint" style="margin-top:4px;display:block"></span></div>
         <div class="field"><label>عدد الطيور الحالي</label><input id="nv_birdcount" type="number" min="1" oninput="checkFlockMatch()"></div>
         <div class="field"><label>مكان الزيارة</label>
           <select id="nv_location"><option value="farm">زيارة مزرعة</option><option value="lab">زيارة معمل</option></select></div>
@@ -258,7 +264,7 @@
         <hr class="divider">
         <h3>بيانات الدورة الجديدة</h3>
         <div class="grid3">
-          <div class="field"><label>تاريخ التحميل (Placement Date)</label><input id="nf_placement" type="date"></div>
+          <div class="field"><label>تاريخ التحميل (Placement Date)</label><input id="nf_placement" type="date" data-auto="1" oninput="this.dataset.auto=''"></div>
           <div class="field"><label>نوع الطائر</label>
             <select id="nf_birdtype">
               <option value="broiler">تسمين (45 يوم)</option>
@@ -288,7 +294,7 @@
       <hr class="divider">
       <h3>التشريح والتشخيص التفاضلي</h3>
       <div class="grid2">
-        <div class="field"><label>عدد الطيور المشرّحة</label><input id="dx_nbirds" type="number" min="1" max="50" value="5" onchange="dxOnNbirds()"></div>
+        <div class="field"><label>عدد الطيور المشرّحة</label><input id="dx_nbirds" type="number" min="1" max="50" value="5" data-auto="1" oninput="this.dataset.auto=''" onchange="dxOnNbirds()"></div>
         <div class="field"><label class="small">علّم على الآفات المشاهَدة أدناه؛ سيظهر التشخيص المرجّح تلقائيًا.</label></div>
       </div>
       <div class="dxpanel">
@@ -367,7 +373,12 @@
       <hr class="divider">
       <h3>نتائج سيرولوجية (اختياري)</h3>
       <div id="seroRows"></div>
-      <button class="btn sm" onclick="addSeroRow()">+ إضافة نتيجة سيرولوجية</button>
+      <div class="row" style="align-items:center;gap:8px">
+        <button class="btn sm" onclick="addSeroRow()">+ إضافة نتيجة سيرولوجية</button>
+        <button class="btn sm" type="button" onclick="document.getElementById('seroImgInput').click()">📷 قراءة نتيجة من صورة</button>
+        <input type="file" id="seroImgInput" accept="image/*" capture="environment" style="display:none" onchange="handleSeroImage(this.files[0]); this.value='';">
+        <span id="seroOcrStatus" class="hint"></span>
+      </div>
 
       <hr class="divider">
       <div class="row">
@@ -498,6 +509,10 @@ const LESIONS = [
   ["cs_sudden_death","cs","نفوق مفاجئ في طيور بحالة جيدة","Sudden death, good condition"],
   ["cs_leg_paralysis","cs","ضعف/شلل بالأرجل (ثنائي، مراحل متأخرة)","Bilateral leg weakness/paralysis (late stage)"],
   ["cs_leukocytosis","cs","كثرة الكريات البيضاء (تحليل دم)","Leukocytosis (blood analysis)"],
+  ["cs_droppings_normal","cs","براز طبيعي (تم فحص البراز ووُجد سليماً)","Normal droppings (checked, unremarkable)"],
+  ["cs_droppings_feed_tinted","cs","براز أخضر/متغيّر بلون العلف — غير مرضي وليس إسهالاً حقيقياً","Feed-tinted greenish droppings — non-pathological, not true diarrhea"],
+  ["cs_cough_mild","cs","سعال خفيف متقطع — غالباً بيئي (تهوية/أمونيا/فرشة) وليس بالضرورة مرضياً","Mild intermittent cough — often environmental, not necessarily disease"],
+  ["cs_scream_occasional","cs","صرخة/صوت مفاجئ عرضي (مرة أو اثنتان بالعنبر كله) — ليس بالضرورة إنفلونزا طيور","Occasional single/double shriek across the house — not necessarily AI"],
 
   ["hd_cyanosis","hd","زرقة العرف والداليتين","Cyanosis of comb/wattles"],
   ["hd_wattle_swelling","hd","تورم الداليات (خصوصاً الذكور)","Swollen wattles (especially males)"],
@@ -888,6 +903,9 @@ const COMPOSITES = [
   {id:"ib_coli",ar:"شعبي معقّد بعدوى الكولاي",en:"IB complicated by Colibacillosis",parts:["ib","col"],minEach:3,
    note:"التهاب شعبي معدي يعقّده كولاي (خاصة في وجود سدادة التفرع + أكياس جبنية).",
    test:"PCR (IBV) + عزل E. coli وحساسية"},
+  {id:"ibd_col",ar:"هبوط مناعي (جامبورو) معقّد بعدوى الكولاي",en:"IBD-induced Immunosuppression complicated by Colibacillosis",parts:["ibd","col"],minEach:2,
+   note:"صورة شائعة خاصة مع عترات الجامبورو الفارينت: هبوط مناعي حاد يفتح الباب لكولاي/CCRD ثانوي بلا مؤشر مايكوبلازما أو فيروس تنفسي واضح. الشك يقوى مع ضمور/نزف البورسا + عمر 14-49 يوم + غشاء كبد/قلب.",
+   test:"PCR/histo (IBDV، جراب فابريشيوس) + عزل E. coli وحساسية"},
   {id:"nec_coc",ar:"التهاب معوي نخري معقّد بالكوكسيديا",en:"Necrotic Enteritis with Coccidiosis",parts:["nec","coc"],minEach:3,
    note:"صورة تسمين شائعة: الكوكسيديا تجرح البطانة فتتيح فرط نمو C. perfringens. التعامل: علاج كوكسيديا فعّال + مضاد للكلوستريديا + مراجعة العلف والفرشة.",
    test:"كشط البطانة (أوسيست + قضبان Gram+) + عزل C. perfringens"},
@@ -945,12 +963,37 @@ const TXPX = {
 
 ORGANS.forEach(o=>LESIONS.push([o.id+"_normal",o.id,"طبيعي / سليم (تم الفحص)","Normal (examined)"]));
 const LES_BY_ID=Object.fromEntries(LESIONS.map(l=>[l[0],l]));
-const dxSelected=new Set(), dxExpanded=new Set(), dxPrev={};
+const dxSelected=new Set(), dxExpanded=new Set(), dxPrev={}, dxOpinion={};
+const QUICK_OPINION_IDS=["cs_cough_mild","cs_scream_occasional"];
+const OPINION_CAUSES=[
+  ["vent","تهوية غير كافية"],
+  ["humidity","رطوبة/أمونيا مرتفعة"],
+  ["litter","فرشة مبللة"],
+  ["husbandry","رعاية عامة (كثافة/إجهاد حراري)"],
+  ["disease","اشتباه مرضي (يُحال لباقي الفحص)"]
+];
+function dxSuggestOpinionCause(){
+  const hum=parseFloat(document.getElementById("fi_humidity")?.value)||0;
+  const amm=parseFloat(document.getElementById("fi_ammonia")?.value)||0;
+  const lit=parseFloat(document.getElementById("fi_litter")?.value)||0;
+  if(hum>70||amm>25) return "humidity";
+  if(lit>35) return "litter";
+  return "";
+}
+function dxSetOpinion(id,val){
+  if(val) dxOpinion[id]=val; else delete dxOpinion[id];
+}
 
 function updateSampleTotal(){
   const a=parseInt(document.getElementById("v_sample_alive").value,10)||0;
   const d=parseInt(document.getElementById("v_sample_dead").value,10)||0;
-  document.getElementById("v_sample_total").value=(a+d)||"";
+  const total=a+d;
+  document.getElementById("v_sample_total").value=total||"";
+  const nb=document.getElementById("dx_nbirds");
+  if(nb && nb.dataset.auto==="1" && total>0){
+    nb.value=total;
+    dxOnNbirds();
+  }
 }
 function dxGetNBirds(){const el=document.getElementById("dx_nbirds");const v=el?parseInt(el.value,10):5;return (isNaN(v)||v<1)?5:v;}
 function dxPrevP(id){const N=dxGetNBirds();const c=dxPrev[id]!=null?Math.min(dxPrev[id],N):N;return c/N;}
@@ -1011,11 +1054,15 @@ function renderDxOrgans(){
         <span>${o.ar}</span><span class="cnt" id="dxcnt_${o.id}"></span><span class="chev">›</span>
       </button>
       <div class="les-list">
-        ${items.map(l=>{const isN=l[0].endsWith("_normal");return `
+        ${items.map(l=>{const isN=l[0].endsWith("_normal");const hasOpinion=QUICK_OPINION_IDS.includes(l[0]);return `
         <div class="les" data-les="${l[0]}">
           <label class="lesmain"><input type="checkbox" onchange="dxToggleLesion('${l[0]}',this.checked)">
             <span class="txt">${l[2]}<span class="le">${l[3]}</span></span></label>
         ${`<select class="prevsel" data-prev="${l[0]}" onchange="dxSetPrev('${l[0]}',this.value)" title="عدد الطيور التي ظهرت فيها هذه الحالة"></select>`}
+        ${hasOpinion?`<select class="opinionsel" data-opinion="${l[0]}" style="display:none" onchange="dxSetOpinion('${l[0]}',this.value)">
+            <option value="">— السبب المرجّح برأيك —</option>
+            ${OPINION_CAUSES.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join("")}
+          </select>`:""}
         </div>`;}).join("")}
       </div>
     </div>`;
@@ -1038,9 +1085,24 @@ function dxToggleLesion(id,checked){
     dxSelected.add(id);
     if(dxPrev[id]==null)dxPrev[id]=dxGetNBirds();
     if(row)row.classList.add("on");
+    if(QUICK_OPINION_IDS.includes(id)){
+      const sel=row?.querySelector(".opinionsel");
+      if(sel){
+        sel.style.display="";
+        if(!dxOpinion[id]){
+          const suggested=dxSuggestOpinionCause();
+          if(suggested){ sel.value=suggested; dxOpinion[id]=suggested; }
+        } else sel.value=dxOpinion[id];
+      }
+    }
   } else {
     dxSelected.delete(id); delete dxPrev[id];
     if(row)row.classList.remove("on");
+    if(QUICK_OPINION_IDS.includes(id)){
+      const sel=row?.querySelector(".opinionsel");
+      if(sel){ sel.style.display="none"; sel.value=""; }
+      delete dxOpinion[id];
+    }
   }
   dxFillPrevSelects(); updateDxCounts(); dxCompute();
 }
@@ -1108,8 +1170,10 @@ function dxCompute(){
 function dxReset(){
   dxSelected.clear(); dxExpanded.clear();
   Object.keys(dxPrev).forEach(k=>delete dxPrev[k]);
+  Object.keys(dxOpinion).forEach(k=>delete dxOpinion[k]);
   document.querySelectorAll(".les input").forEach(cb=>cb.checked=false);
   document.querySelectorAll(".les").forEach(el=>el.classList.remove("on","hit"));
+  document.querySelectorAll(".opinionsel").forEach(sel=>{sel.style.display="none";sel.value="";});
   document.querySelectorAll(".organ").forEach(o=>{o.classList.remove("open");o.style.display="";});
   const s=document.getElementById("dxsearch"); if(s)s.value="";
   updateDxCounts(); dxCompute();
@@ -2006,6 +2070,22 @@ function checkFlockMatch(){
   const birdCount=document.getElementById("nv_birdcount").value?parseInt(document.getElementById("nv_birdcount").value):null;
   const banner=document.getElementById("flockMatchBanner");
   const newFields=document.getElementById("newFlockFields");
+
+  // حساب وعرض تاريخ التحميل تلقائيًا بمجرد إدخال العمر — بغض النظر عن وجود دورة مسجّلة أو لأ
+  const calcEl=document.getElementById("placementCalc");
+  const nfPlacementEl=document.getElementById("nf_placement");
+  if(calcEl){
+    if(age!=null && age>=0 && date){
+      const implied=new Date(new Date(date).getTime()-age*864e5).toISOString().slice(0,10);
+      calcEl.textContent=`📅 تاريخ التحميل المحسوب: ${implied}`;
+      if(nfPlacementEl && nfPlacementEl.dataset.auto==="1"){
+        nfPlacementEl.value=implied;
+      }
+    }else{
+      calcEl.textContent="";
+    }
+  }
+
   if(!clientId||!date){ banner.innerHTML=""; newFields.style.display="none"; return; }
 
   const {match,warnings}=findMatchingFlock(clientId,house,date,age,birdCount);
@@ -2251,6 +2331,101 @@ function dxSeroBonusMap(){
   return map;
 }
 
+/* ---------------------- قراءة نتائج السيرولوجيا من صورة (عبر Google Apps Script + Gemini) ---------------------- */
+// بعد نشر Apps Script (Web App) حط الرابط بتاعه هنا بدل النص الفاضي:
+const SEROLOGY_OCR_URL = ""; // مثال: "https://script.google.com/macros/s/AKfycb.../exec"
+
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(r.result.split(",")[1]);
+    r.onerror=()=>reject(new Error("تعذّرت قراءة الملف"));
+    r.readAsDataURL(file);
+  });
+}
+
+// مطابقة اسم المرض القادم من قراءة الصورة مع قائمة الأمراض المعروفة في النظام (عربي/إنجليزي)
+function matchDiseaseId(name){
+  if(!name) return "";
+  const n=name.trim().toLowerCase();
+  if(!n) return "";
+  let best="", bestScore=0;
+  DISEASES.forEach(d=>{
+    const ar=(d.ar||"").toLowerCase();
+    const en=(d.en||"").toLowerCase();
+    let score=0;
+    if(ar===n||en===n) score=100;
+    else if(ar.includes(n)||n.includes(ar)||en.includes(n)||n.includes(en)) score=50;
+    if(score>bestScore){bestScore=score; best=d.id;}
+  });
+  return bestScore>=50?best:"";
+}
+
+async function handleSeroImage(file){
+  if(!file) return;
+  const statusEl=document.getElementById("seroOcrStatus");
+  if(!SEROLOGY_OCR_URL){
+    alert("⚠ لسه ماتحطش رابط Google Apps Script في الكود (SEROLOGY_OCR_URL). راجع تعليمات النشر.");
+    return;
+  }
+  try{
+    statusEl.textContent="⏳ جارِ قراءة الصورة...";
+    const base64=await fileToBase64(file);
+    const resp=await fetch(SEROLOGY_OCR_URL,{
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"}, // يتجنب مشاكل CORS preflight مع Apps Script
+      body:JSON.stringify({image:base64, mimeType:file.type||"image/jpeg"})
+    });
+    if(!resp.ok) throw new Error("فشل الاتصال بخدمة القراءة (HTTP "+resp.status+")");
+    const data=await resp.json();
+    if(data.error) throw new Error(data.error+(data.details?(" — "+data.details):""));
+    const results=Array.isArray(data.results)?data.results:[];
+    if(!results.length){
+      statusEl.textContent="";
+      alert("لم يتم العثور على نتائج واضحة في الصورة. من فضلك أضف النتيجة يدويًا أو جرّب صورة أوضح.");
+      return;
+    }
+    results.forEach(r=>{
+      addSeroRow();
+      const row=document.getElementById("seroRows").lastElementChild;
+      const did=matchDiseaseId(r.disease);
+      if(did) row.querySelector(".s_disease").value=did;
+      if(r.test) row.querySelector(".s_test").value=(String(r.test).toUpperCase().includes("ELISA")?"ELISA":"HI");
+      if(r.age!=null && r.age!=="") row.querySelector(".s_age").value=r.age;
+      if(r.titer_gmt!=null && r.titer_gmt!=="") row.querySelector(".s_titer").value=r.titer_gmt;
+      if(r.cv!=null && r.cv!=="") row.querySelector(".s_cv").value=r.cv;
+      if(r.significance) row.querySelector(".s_sig").value=r.significance;
+    });
+    dxCompute();
+    statusEl.textContent="✅ تمت القراءة — راجع الحقول وعدّلها قبل الحفظ ("+results.length+" نتيجة).";
+  }catch(e){
+    statusEl.textContent="";
+    alert("⚠ تعذّرت قراءة الصورة: "+(e.message||e)+"\nمن فضلك أضف النتيجة يدويًا.");
+  }
+}
+
+/* ---------------------- اختيار رقم هاتف العميل من جهات الاتصال بالموبايل ---------------------- */
+async function pickClientPhone(){
+  if(!("contacts" in navigator) || !("ContactsManager" in window)){
+    alert("متصفحك لا يدعم اختيار جهات الاتصال مباشرة (الخاصية متاحة حاليًا في Chrome على أندرويد فقط).\nمن فضلك اكتب الرقم يدويًا.");
+    return;
+  }
+  try{
+    const contacts = await navigator.contacts.select(["name","tel"], {multiple:false});
+    if(!contacts || !contacts.length) return; // المستخدم لغى الاختيار
+    const c = contacts[0];
+    const tel = (c.tel && c.tel[0]) ? c.tel[0].trim() : "";
+    if(tel) document.getElementById("cl_phone").value = tel;
+    const nameEl = document.getElementById("cl_name");
+    if(!nameEl.value.trim() && c.name && c.name[0]) nameEl.value = c.name[0];
+  }catch(e){
+    // المستخدم رفض الإذن أو ألغى الاختيار — لا داعي لإظهار تنبيه مزعج
+    if(e && e.name !== "AbortError"){
+      alert("⚠ تعذّر فتح جهات الاتصال: "+(e.message||e));
+    }
+  }
+}
+
 /* ---------------------- حفظ الزيارة ---------------------- */
 function genFlockCode(client,houseName,placementDate){
   const initials=(client.name||"").replace(/\s+/g,"").slice(0,6);
@@ -2307,7 +2482,7 @@ async function saveVisitInner(clientId,date){
   const dxFired=dxEvalComposites(dxRows);
   const diagnosis={
     nbirds: dxGetNBirds(),
-    lesions: [...dxSelected].map(id=>({id, prev: dxPrev[id]||dxGetNBirds()})),
+    lesions: [...dxSelected].map(id=>({id, prev: dxPrev[id]||dxGetNBirds(), opinion: dxOpinion[id]||null})),
     topDiagnoses: dxRows.slice(0,3).map(r=>({id:r.d.id,ar:r.d.ar,en:r.d.en,score:+r.score.toFixed(1),test:r.d.test})),
     composites: dxFired.map(f=>f.c.ar)
   };
@@ -2376,6 +2551,8 @@ async function saveVisitInner(clientId,date){
    "fi_ammonia","fi_litter","fi_density","fi_ph","fi_temp","fi_humidity","fi_light","nv_house","nv_age","nv_birdcount",
    "nf_placement","nf_birdcount0"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("v_feed").value=""; document.getElementById("fi_vent").value=""; document.getElementById("fi_biosec").value=""; document.getElementById("v_sample_alive").value=""; document.getElementById("v_sample_dead").value=""; document.getElementById("v_sample_total").value="";
+  document.getElementById("dx_nbirds").value="5"; document.getElementById("dx_nbirds").dataset.auto="1";
+  document.getElementById("nf_placement").dataset.auto="1";
   confirmedDxList=[]; renderConfirmedDxChips(); document.getElementById("nv_location").value="farm";
   document.getElementById("seroRows").innerHTML=""; seroCount=0;
   document.getElementById("medRows").innerHTML=""; medCount=0;
@@ -2430,12 +2607,19 @@ function editVisit(id){
 
   dxReset();
   const dx=v.diagnosis||{};
-  document.getElementById("dx_nbirds").value=dx.nbirds||5;
+  const dxNbirdsEl=document.getElementById("dx_nbirds");
+  dxNbirdsEl.value=dx.nbirds||5;
+  dxNbirdsEl.dataset.auto=""; // قيمة محمّلة من زيارة محفوظة — لا تُستبدل تلقائيًا
   (dx.lesions||[]).forEach(l=>{
     const lid=typeof l==="string"?l:l.id;
     const pcount=typeof l==="string"?dx.nbirds:l.prev;
     const cb=document.querySelector(`.les[data-les="${lid}"] input`);
     if(cb){ cb.checked=true; dxToggleLesion(lid,true); if(pcount!=null)dxPrev[lid]=pcount; }
+    if(typeof l!=="string" && l.opinion && QUICK_OPINION_IDS.includes(lid)){
+      dxOpinion[lid]=l.opinion;
+      const sel=document.querySelector(`.les[data-les="${lid}"] .opinionsel`);
+      if(sel){ sel.style.display=""; sel.value=l.opinion; }
+    }
   });
   dxFillPrevSelects(); updateDxCounts(); dxCompute();
 
