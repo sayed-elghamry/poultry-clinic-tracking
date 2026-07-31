@@ -315,6 +315,9 @@
           <select id="v_feed" onchange="onFeedChange()"><option value="">—</option><option>طبيعي</option><option>منخفض</option><option>متوقف</option></select></div>
         <div class="field" id="v_feedPatternWrap" style="display:none"><label>نمط انخفاض/توقف العلف</label>
           <select id="v_feedPattern"><option value="">—</option><option value="gradual">نزول تدريجي</option><option value="sudden">سقوط/توقف مفاجئ</option></select></div>
+        <div class="field"><label>العلف الفعلي المستهلك اليوم (كجم)</label>
+          <input id="v_feedActualKg" type="number" min="0" inputmode="decimal" oninput="refreshBreedTarget()">
+        </div>
       </div>
 
       <h4 style="margin:12px 0 4px">سجل النفوق (آخر أيام)</h4>
@@ -660,7 +663,18 @@ function refreshBreedTarget(){
     if(wT && fT && birdCount){
       const feedPerBirdKg=(wT/1000)*fT;
       const totalFeedKg=feedPerBirdKg*birdCount;
-      host.innerHTML=`🎯 مرجعي ${b.name} عند يوم ${age}: وزن ~${wT} جم · تحويل علف ~${fT.toFixed(2)} → <b>استهلاك علف تراكمي متوقع ≈ ${totalFeedKg.toLocaleString("en-US",{maximumFractionDigits:0})} كجم</b> لإجمالي ${birdCount.toLocaleString("en-US")} طائر.`;
+      const cumAt=a=>{a=Math.max(1,a);return (refInterp(b.w,a)/1000)*refInterp(b.fcr,a);};
+      const dailyPerBirdKg=Math.max(0, cumAt(age)-cumAt(age-1));
+      const dailyTotalKg=dailyPerBirdKg*birdCount;
+      let feedVerdict="";
+      const actualKg=parseFloat(document.getElementById("v_feedActualKg").value);
+      if(!isNaN(actualKg) && dailyTotalKg>0){
+        const ratio=actualKg/dailyTotalKg;
+        if(ratio>=0.95) feedVerdict=`<br><b style="color:#2a7d2a">✅ سحب علف جيد</b> (${(ratio*100).toFixed(0)}% من المرجعي — الفعلي ${actualKg} كجم مقابل ${dailyTotalKg.toFixed(1)} كجم متوقع)`;
+        else if(ratio>=0.80) feedVerdict=`<br><b style="color:#8A241D">🟡 سحب علف طبيعي تقريبًا</b> (${(ratio*100).toFixed(0)}% من المرجعي)`;
+        else feedVerdict=`<br><b style="color:#c0392b">⚠ سحب علف ضعيف</b> (${(ratio*100).toFixed(0)}% بس من المرجعي — الفعلي ${actualKg} كجم مقابل ${dailyTotalKg.toFixed(1)} كجم متوقع؛ راجع المرض/الحرارة/جودة العلف)`;
+      }
+      host.innerHTML=`🎯 مرجعي ${b.name} عند يوم ${age}: وزن ~${wT} جم · تحويل علف ~${fT.toFixed(2)} → <b>استهلاك علف تراكمي متوقع ≈ ${totalFeedKg.toLocaleString("en-US",{maximumFractionDigits:0})} كجم</b> لإجمالي ${birdCount.toLocaleString("en-US")} طائر.<br>📅 العلف اليومي المرجعي المتوقع ≈ <b>${dailyTotalKg.toFixed(1)} كجم/يوم</b>${feedVerdict}`;
     } else host.textContent="";
   } else if(bt==="layer"||bt==="breeder"){
     const b=BREEDS_L[breed]||BREEDS_L["other_layer"];
@@ -880,6 +894,7 @@ const LESIONS = [
   ["kd_swollen","kd","كلى منتفخة","Swollen"],
   ["kd_pale","kd","كلى شاحبة","Pale"],
   ["kd_nephritis","kd","التهاب كلوي","Nephritis"],
+  ["kd_nephrosis","kd","تنكّس كلوي (Nephrosis) — سبب سُمّي/جفافي غالباً وليس التهابياً، يُفرَّق عن Nephritis","Nephrosis — usually toxic/dehydration-related degeneration, not inflammatory (distinct from Nephritis)"],
   ["kd_urate","kd","ترسب يوريت / نقرس كلوي","Urate deposits / nephrosis"],
   ["kd_congested","kd","احتقان الكلى","Congested"],
   ["kd_hemorrhage","kd","نزف الكلى","Hemorrhage"],
@@ -1092,8 +1107,8 @@ const DISEASES = [
    test:"PCR (ILTV) + histo (أجسام اندماج داخل نووية)",
    w:{tr_hemorrhage:3,cs_dyspnea:2,cs_cough:2,hd_conjunctivitis:2,nb_sinusitis:2,tr_caseous_plug:1,tr_fibrin:1,tr_thickened:1,tr_congestion:1,hd_ocular_catarrh:1,tr_catarrh:1,cs_sneezing:1,egg_pale_weak_shell:1}},
   {id:"ibd",ar:"الجامبورو",en:"Infectious Bursal Disease",cls:"فيروسي",aMin:14,aMax:49,
-   test:"PCR (IBDV) + histo لجراب فابريشيوس",
-   w:{bu_enlarged:3,bu_hemorrhage:3,tm_hemorrhage:3,bu_gelatinous:3,bm_hemorrhage:3,bu_edematous:2,cn_dehydration:2,ct_necrosis:2,kd_urate:1,bu_atrophied:1,bu_caseous:1,bu_necrosis:1,th_atrophied:1,th_hemorrhage:1,pv_gland_tip_hem:1,bm_dehydration:1,cs_white_watery:1,sp_enlarged:1,ct_caseous:1}},
+   test:"PCR (IBDV) + histo لجراب فابريشيوس — السلالات شديدة الضراوة/العصيّة على المناعة (vvIBDV/nephropathogenic) ممكن تعمل التهاب كلوي واضح وترسب يوريت بجانب الآفة الأساسية بالجراب",
+   w:{bu_enlarged:3,bu_hemorrhage:3,tm_hemorrhage:3,bu_gelatinous:3,bm_hemorrhage:3,bu_edematous:2,cn_dehydration:2,ct_necrosis:2,kd_nephritis:2,kd_urate:1,bu_atrophied:1,bu_caseous:1,bu_necrosis:1,th_atrophied:1,th_hemorrhage:1,pv_gland_tip_hem:1,bm_dehydration:1,cs_white_watery:1,sp_enlarged:1,ct_caseous:1}},
   {id:"cav",ar:"فقر الدم الفيروسي (فيروس أنيميا الدجاج)",en:"Chicken Anaemia Virus (CAV)",cls:"فيروسي",aMin:7,aMax:28,
    test:"PCR (CAV) + فحص دم (هيماتوكريت منخفض) — يُشتبه به خصوصاً مع عدوى مشتركة بالجامبورو (تُضخّم شراسته)، والنفوق غالباً بعمر 2-3 أسابيع بسبب عدوى ثانوية جرثومية/فطرية مصاحبة",
    w:{bmw_pale:3,bmw_hypoplastic:3,th_atrophied:2,kd_pale:2,bu_atrophied:1,sp_atrophied:1,lv_green:1,bm_hemorrhage:1,tm_hemorrhage:1,sk_cellulitis:1}},
@@ -1183,7 +1198,7 @@ const DISEASES = [
    w:{nt_green_muscle:3,bm_pale:1}},
   {id:"heat",ar:"إجهاد حراري",en:"Heat Stress",cls:"إداري",aMin:0,aMax:999,
    test:"تشخيص حقلي (قراءة الحرارة/الرطوبة بالعنبر + معدل التهوية) — لا يحتاج تأكيداً معملياً. آفات إضافية موثّقة بحثياً (خصوصاً الإجهاد المزمن/المتكرر): تضخم الأذين الأيمن واحتقان القلب، احتقان ووذمة رئوية، كبد شاحب دهني، نزف ووذمة تحت محفظة الكلى، وأحيانًا اتساع كيسي بالحالب (Ureteral pseudobladder).",
-   w:{nt_heat_stress:3,cs_dyspnea:2,cn_ascites:1,cs_sudden_death:1,nt_hock_burn:1,ht_enlargement:2,ln_congestion:2,ln_edema:1,lv_fatty:1,kd_hemorrhage:1,ur_pseudobladder:1}},
+   w:{nt_heat_stress:3,cs_dyspnea:2,cn_ascites:1,cs_sudden_death:1,nt_hock_burn:1,ht_enlargement:2,ln_congestion:2,ln_edema:1,lv_fatty:1,kd_hemorrhage:1,kd_nephrosis:1,ur_pseudobladder:1}},
   {id:"amm",ar:"التسمم بالأمونيا الزائدة (سوء التهوية)",en:"Ammonia Toxicity (Poor Ventilation)",cls:"بيئي",aMin:0,aMax:999,
    test:"قياس مباشر لتركيز الأمونيا بالعنبر (يفضَّل أقل من 25ppm) + تقييم التهوية وجفاف الفرشة — الارتفاع المزمن يهيّئ لعدوى تنفسية ثانوية",
    w:{hd_conjunctivitis:2,hd_corneal_ulcer:2,tr_thickened:1,tr_congestion:1,cs_dyspnea:1}},
@@ -1191,8 +1206,11 @@ const DISEASES = [
    test:"تشخيص حقلي (سوء ضبط سخانات التدفئة + ضعف تهوية) — يتأكد بتحليل طيفي للدم عند الاشتباه. المصدر غالباً سخان يعمل باحتراق ناقص مع نقص أكسجين وتهوية ضعيفة، وقد يسبب نفوق مفاجئ ومرتفع خلال ساعات قليلة.",
    w:{cc_cherry_red:3,hd_cyanosis:2,cs_sudden_death:2}},
   {id:"saltx",ar:"التسمم بالملح (زيادة كلوريد الصوديوم)",en:"Salt Toxicosis (Excess Sodium Chloride)",cls:"سُمّي",aMin:0,aMax:999,
-   test:"مراجعة نسبة الملح/الصوديوم بالعليقة ومصدر مياه الشرب — الجرعة المميتة التقريبية ~4 جم/كجم من وزن الجسم",
-   w:{cn_ascites:2,ht_hydropericardium:2,ht_enlargement:1,cs_diarrhea:1,cs_nervous:1,cs_leg_paralysis:1,cs_drop_production:1}},
+   test:"مراجعة نسبة الملح/الصوديوم بالعليقة ومصدر مياه الشرب — الجرعة المميتة التقريبية ~4 جم/كجم من وزن الجسم. عطش شديد مصاحب مع ضرر كلوي تنكّسي (نيفروسيس) من زيادة الحمل الأسموزي على الكلى.",
+   w:{cn_ascites:2,ht_hydropericardium:2,ht_enlargement:1,cs_diarrhea:1,cs_nervous:1,cs_leg_paralysis:1,cs_drop_production:1,kd_nephrosis:2}},
+  {id:"drugtox",ar:"التسمم الدوائي الكلوي (جرعة زائدة/دواء سام للكلى)",en:"Drug-Induced Nephrotoxicity (Overdose)",cls:"سُمّي",aMin:0,aMax:999,
+   test:"مراجعة الجرعات والمدة الدوائية المعطاة مؤخراً (خصوصاً الأمينوجليكوزيدات والسلفا بجرعات عالية أو لمدة طويلة) + درجة الجفاف المصاحبة — لا يوجد اختبار معملي نوعي، التشخيص بالاستبعاد ومراجعة السجل الدوائي",
+   w:{kd_nephrosis:3,kd_swollen:1,kd_urate:1,cn_dehydration:1}},
 
   {id:"spiro",ar:"السبيروكيتوزس (بوريليا الطيور)",en:"Avian Spirochetosis (Borrelia anserina)",cls:"دم/طفيلي",aMin:0,aMax:999,
    test:"مسحة دم (Giemsa) لرؤية السبيروكيت + PCR — يزداد صيفاً مع نشاط قراد Argas الناقل، يُشتبه فيه كتشخيص تفريقي مع النيوكاسل",
@@ -1279,6 +1297,7 @@ const TXPX = {
   amm:{tx:"تهوية فورية لخفض التركيز + تجفيف الفرشة + مضاد حيوي للعدوى التنفسية الثانوية عند الاشتباه.",px:"إدارة فرشة جافة، معدل تهوية أدنى كافٍ حتى في الطقس البارد، قياس دوري للأمونيا (يُفضَّل أقل من 25ppm)."},
   co:{tx:"تهوية فورية وقوية للعنبر بهواء نقي + إيقاف مصدر الاحتراق فورًا لحين الفحص والإصلاح.",px:"صيانة دورية لسخانات التدفئة والتأكد من الاحتراق الكامل (عدم نقص الأكسجين)، تركيب كاشف أول أكسيد الكربون، ضبط معدل التهوية الأدنى في الطقس البارد."},
   saltx:{tx:"إيقاف مصدر الملح الزائد فورًا (عليقة أو مياه) + توفير مياه عذبة بكثرة.",px:"مراجعة دورية لنسبة الملح والصوديوم بالعليقة عند التصنيع، فحص جودة مياه الشرب (خصوصاً الآبار)."},
+  drugtox:{tx:"إيقاف الدواء المشتبه فورًا + دعم بمياه ومحاليل لتحسين وظيفة الكلى.",px:"الالتزام بالجرعات والمدد الموصى بها (خصوصاً الأمينوجليكوزيدات/السلفا)، تجنّب الجمع بين أكثر من دواء نيفروتوكسيك في نفس الوقت، مراجعة دقة الحقن."},
   spiro:{tx:"مضاد حيوي (بنسلين/تتراسيكلين) فعّال ومجدٍ خاصة بالتدخل المبكر + دعم.",px:"مكافحة قراد الأرغاس (Argas) في العنبر والشقوق، تطهير بين الدورات، تجنّب إعادة استخدام الإبر بين الطيور."},
   leuco:{tx:"لا علاج نوعي فعّال معتمد على نطاق واسع؛ دعم عام ومضاد حيوي للعدوى الثانوية.",px:"مكافحة ذباب Simulium الناقل (بيوسكيورتي حول المجاري المائية القريبة)، تجنّب تربية القطعان قرب مصادر مياه راكدة/جارية بها الناقل."}
 };
@@ -3243,6 +3262,7 @@ async function saveVisitInner(clientId,date){
     mortalityLog: collectMortLog(),
     fieldSignals: collectFieldSignals(),
     feed:document.getElementById("v_feed").value,
+    feedActualKg:document.getElementById("v_feedActualKg").value,
     feedPattern:document.getElementById("v_feedPattern").value,
     trays:document.getElementById("v_trays").value,
     production:document.getElementById("v_prod").value,
@@ -3302,7 +3322,7 @@ async function saveVisitInner(clientId,date){
     window.__pendingMedVisitId=null;
   }
 
-  ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion","v_txplan","v_prevmed","v_trays","v_vaccDisease","v_vaccDaysAgo",
+  ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion","v_txplan","v_prevmed","v_trays","v_vaccDisease","v_vaccDaysAgo","v_feedActualKg",
    "fi_ammonia","fi_litter","fi_density","fi_ph","fi_temp","fi_humidity","fi_light","nv_house","nv_age","nv_birdcount",
    "nf_placement","nf_birdcount0"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("v_feed").value=""; document.getElementById("v_feedPattern").value=""; document.getElementById("v_feedPatternWrap").style.display="none";
@@ -3352,6 +3372,7 @@ function editVisit(id){
     document.getElementById("v_mortc").value=v.mortalityCum||"";
   }
   document.getElementById("v_feed").value=v.feed||""; onFeedChange();
+  document.getElementById("v_feedActualKg").value=v.feedActualKg||"";
   document.getElementById("v_feedPattern").value=v.feedPattern||"";
   document.getElementById("v_trays").value=v.trays||"";
   document.getElementById("v_prod").value=v.production||"";
