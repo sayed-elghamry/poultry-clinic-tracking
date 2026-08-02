@@ -590,6 +590,7 @@ const CYCLE_DAYS = { broiler:45, sasso:68, baladi:90, layer:null, breeder:null }
 const BIRD_LABEL = { broiler:"تسمين", sasso:"ساسو", baladi:"بلدي", layer:"بياض", breeder:"أمهات" };
 
 /* ---------------------- مرجعية السلالات (من كراسة العنبر اليومية وكراسة البياض — د. السيد الغمري) ---------------------- */
+const TEMP_TARGET = {1:33, 2:30, 3:27, 4:25, 5:23, 6:21, 7:20}; // مرجعي حرارة العنبر بالأسبوع للتسمين (°م)
 const BREEDS = {
  "ross308":{name:"Ross 308",w:{7:190,14:485,21:990,28:1600,35:2290,42:2980,45:3260},fcr:{7:0.90,14:1.10,21:1.28,28:1.44,35:1.58,42:1.72,45:1.80}},
  "cobb500":{name:"Cobb 500",w:{7:185,14:465,21:950,28:1560,35:2270,42:2980,45:3260},fcr:{7:0.89,14:1.09,21:1.27,28:1.43,35:1.57,42:1.71,45:1.79}},
@@ -2719,15 +2720,23 @@ const MED_PURPOSES=[
   ["other","أخرى"]
 ];
 let DRUG_INDEX={}; // { "اسم الدواء بحروف صغيرة": {name, dose, pack, purpose, count, lastDate} }
+/* ---------------------- مرجعية جاهزة (بذور) للأدوية — من روشتات حقيقية بعتها د. السيد ---------------------- */
+const DRUG_CATALOG_SEED=[
+  // {name:"...", dose:"...", pack:"...", purpose:"antibiotic"},
+];
 function buildDrugIndex(){
   const idx={};
+  DRUG_CATALOG_SEED.forEach(m=>{
+    const name=(m.name||"").trim(); if(!name) return;
+    idx[name.toLowerCase()]={name, dose:m.dose||"", pack:m.pack||"", purpose:m.purpose||"", count:0, lastDate:""};
+  });
   STATE.visits.forEach(v=>{
     (v.medications||[]).forEach(m=>{
       const name=(m.drug||"").trim(); if(!name) return;
       const key=name.toLowerCase();
       const dose=m.dose||formatMedDose(m);
       const existing=idx[key];
-      if(!existing || (v.date||"")>(existing.lastDate||"")){
+      if(!existing || (v.date||"")>=(existing.lastDate||"")){
         idx[key]={name, dose:dose||"", pack:m.pack||"", purpose:m.purpose||"", count:(existing?existing.count:0)+1, lastDate:v.date||""};
       } else {
         existing.count++;
@@ -2760,14 +2769,22 @@ const VACC_LIVEKILLED=[["live","حي"],["killed","ميت (معطّل)"]];
 const VACC_ROUTES=["حقن تحت الجلد","حقن عضل","عين/أنف قطارة","رذاذ (سبراي)","مياه الشرب","وخز الجناح"];
 let vaccCount=0;
 let VACC_INDEX={}; // { "الاسم التجاري بحروف صغيرة": {brand,valency,liveKilled,diseases:[{id,strain}],dose,route,lastDate} }
+/* ---------------------- مرجعية جاهزة (بذور) للتحصينات — من برامج تحصين حقيقية بعتها د. السيد ---------------------- */
+const VACC_CATALOG_SEED=[
+  // {brand:"...", valency:"bi", liveKilled:"live", diseases:[{id:"nd",strain:"..."},{id:"ib",strain:"..."}], dose:"...", route:"..."},
+];
 function buildVaccIndex(){
   const idx={};
+  VACC_CATALOG_SEED.forEach(vc=>{
+    const brand=(vc.brand||"").trim(); if(!brand) return;
+    idx[brand.toLowerCase()]={brand, valency:vc.valency||"", liveKilled:vc.liveKilled||"", diseases:vc.diseases||[], dose:vc.dose||"", route:vc.route||"", lastDate:""};
+  });
   STATE.visits.forEach(v=>{
     (v.vaccinesPrescribed||[]).forEach(vc=>{
       const brand=(vc.brand||"").trim(); if(!brand) return;
       const key=brand.toLowerCase();
       const existing=idx[key];
-      if(!existing || (v.date||"")>(existing.lastDate||"")){
+      if(!existing || (v.date||"")>=(existing.lastDate||"")){
         idx[key]={brand, valency:vc.valency||"", liveKilled:vc.liveKilled||"", diseases:vc.diseases||[], dose:vc.dose||"", route:vc.route||"", lastDate:v.date||""};
       }
     });
@@ -3575,7 +3592,7 @@ function renderOpenFlocks(){
 }
 
 /* ---------------------- تهيئة أداة التشخيص عند التحميل ---------------------- */
-renderDxOrgans(); updateDxCounts(); dxCompute(); populateConfirmedDiagnosisSelect(); populateBreedSelect();
+renderDxOrgans(); updateDxCounts(); dxCompute(); populateConfirmedDiagnosisSelect(); populateBreedSelect(); buildDrugIndex(); buildVaccIndex();
 </script>
 </body>
 </html>
