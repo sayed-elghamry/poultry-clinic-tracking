@@ -493,6 +493,7 @@
       <button type="button" class="btn sm" onclick="addMedRow()">+ إضافة دواء</button>
       <button type="button" class="btn sm" onclick="addVaccRow()">💉 + إضافة تحصين</button>
       <div id="vaccRows" style="margin-top:8px"></div>
+      <datalist id="vaccBrandSuggestions"></datalist>
 
       <hr class="divider">
       <h3>الفحص الفني للمزرعة (اختياري)</h3>
@@ -1836,7 +1837,11 @@ function formatMedLine(m){
   return parts.join(" — ");
 }
 function formatVaccLine(vc){
-  let parts=[`• ${vc.name}`];
+  let parts=[`• ${vc.brand||vc.name}`];
+  if(vc.brand && vc.name && vc.name!==vc.brand) parts.push(`(${vc.name})`);
+  const lkAr=vc.liveKilled==="live"?"حي":(vc.liveKilled==="killed"?"ميت":"");
+  if(lkAr) parts.push(lkAr);
+  if(vc.dose) parts.push(vc.dose);
   if(vc.route) parts.push(vc.route);
   if(vc.when) parts.push(`الموعد: ${vc.when}`);
   return parts.join(" — ");
@@ -1930,6 +1935,7 @@ function startListeners(){
     renderDashboard();
     if(currentClientDetailId) renderClientDetail(currentClientDetailId);
     buildDrugIndex();
+    buildVaccIndex();
   });
 }
 
@@ -2744,59 +2750,132 @@ function onMedDrugInput(rowId){
     if(purpEl && !purpEl.value && hit.purpose) purpEl.value=hit.purpose;
   }
 }
-const VACC_NAMES=[
+const VACC_DISEASES=[
   ["nd","نيوكاسل"],["ib","آي بي (شعبي)"],["ilt","آي إل تي"],["ibd","جامبورو"],
   ["eds","EDS-76"],["ai","إنفلونزا (H5/H9)"],["reo","ريو (التهاب مفاصل فيروسي)"],
   ["pox","جدري"],["cor","كوريزا"],["salm","سالمونيلا"],["other","أخرى"]
 ];
+const VACC_VALENCY=[["mono","أحادي"],["bi","ثنائي"],["tri","ثلاثي"],["quad","رباعي"],["penta","خماسي"]];
+const VACC_LIVEKILLED=[["live","حي"],["killed","ميت (معطّل)"]];
 const VACC_ROUTES=["حقن تحت الجلد","حقن عضل","عين/أنف قطارة","رذاذ (سبراي)","مياه الشرب","وخز الجناح"];
 let vaccCount=0;
-function addVaccRow(dName,dRoute,dWhen){
+let VACC_INDEX={}; // { "الاسم التجاري بحروف صغيرة": {brand,valency,liveKilled,diseases:[{id,strain}],dose,route,lastDate} }
+function buildVaccIndex(){
+  const idx={};
+  STATE.visits.forEach(v=>{
+    (v.vaccinesPrescribed||[]).forEach(vc=>{
+      const brand=(vc.brand||"").trim(); if(!brand) return;
+      const key=brand.toLowerCase();
+      const existing=idx[key];
+      if(!existing || (v.date||"")>(existing.lastDate||"")){
+        idx[key]={brand, valency:vc.valency||"", liveKilled:vc.liveKilled||"", diseases:vc.diseases||[], dose:vc.dose||"", route:vc.route||"", lastDate:v.date||""};
+      }
+    });
+  });
+  VACC_INDEX=idx;
+  const dl=document.getElementById("vaccBrandSuggestions");
+  if(dl) dl.innerHTML=Object.values(idx).map(e=>`<option value="${e.brand}">`).join("");
+}
+function addVaccRow(prefill){
+  prefill=prefill||{};
   vaccCount++;
   const id="vacc"+vaccCount;
   const div=document.createElement("div");
   div.className="medcard"; div.id=id;
-  const nameOptions=VACC_NAMES.map(v=>`<option value="${v[0]}">${v[1]}</option>`).join("");
+  const valencyOptions='<option value="">—</option>'+VACC_VALENCY.map(t=>`<option value="${t[0]}">${t[1]}</option>`).join("");
+  const lkOptions='<option value="">—</option>'+VACC_LIVEKILLED.map(t=>`<option value="${t[0]}">${t[1]}</option>`).join("");
   const routeOptions='<option value="">—</option>'+VACC_ROUTES.map(r=>`<option>${r}</option>`).join("");
+  const diseaseChecks=VACC_DISEASES.map(d=>`
+    <span style="display:inline-flex;align-items:center;gap:4px;margin:3px 10px 3px 0">
+      <label style="display:inline-flex;align-items:center;gap:3px;font-size:13px">
+        <input type="checkbox" class="vc_disease" value="${d[0]}" onchange="onVaccDiseaseToggle('${id}',this)"> ${d[1]}
+      </label>
+      <input type="text" class="vc_strain" data-disease="${d[0]}" placeholder="السلالة (مثال: LaSota)" style="display:none;width:120px;font-size:12px;padding:3px 5px">
+    </span>`).join("");
   div.innerHTML=`
     <div class="grid3">
-      <div class="field"><label>التحصين</label>
-        <select class="vc_name" onchange="onVaccNameChange('${id}')">${nameOptions}</select>
-        <input class="vc_name_other" style="display:none;margin-top:6px" placeholder="اكتب اسم التحصين">
+      <div class="field"><label>الاسم التجاري</label>
+        <input class="vc_brand" list="vaccBrandSuggestions" placeholder="مثال: Nobilis ND+IB+EDS" oninput="onVaccBrandInput('${id}')">
       </div>
-      <div class="field"><label>طريقة التحصين</label><select class="vc_route">${routeOptions}</select></div>
-      <div class="field"><label>الموعد (عمر باليوم أو تاريخ)</label><input class="vc_when" placeholder="مثال: يوم 12 أو 2026-08-05"></div>
+      <div class="field"><label>حي / ميت</label><select class="vc_livekilled">${lkOptions}</select></div>
+      <div class="field"><label>عدد الأمراض بالحقنة</label><select class="vc_valency">${valencyOptions}</select></div>
     </div>
+    <div class="field" style="margin-top:6px"><label>الأمراض المغطاة (وسلالة كل واحدة لو معروفة)</label>
+      <div class="vc_diseases_wrap">${diseaseChecks}</div>
+    </div>
+    <div class="grid3" style="margin-top:6px">
+      <div class="field"><label>طريقة التحصين</label><select class="vc_route">${routeOptions}</select></div>
+      <div class="field" style="grid-column:span 2"><label>الجرعة / تعريف مختصر</label><input class="vc_dose" placeholder="مثال: 1000 جرعة/زجاجة تُذاب في مياه الشرب"></div>
+    </div>
+    <div class="field" style="margin-top:6px;max-width:220px"><label>عمر الأيام (يُكتب كل مرة يدويًا)</label><input class="vc_when" placeholder="مثال: يوم 12"></div>
     <div class="row" style="margin-top:8px;justify-content:flex-end">
       <button class="btn sm danger" onclick="document.getElementById('${id}').remove()">🗑 حذف التحصين</button>
     </div>`;
   document.getElementById("vaccRows").appendChild(div);
-  if(dName){
-    const row=document.getElementById(id);
-    const nameSel=row.querySelector(".vc_name");
-    if(VACC_NAMES.some(v=>v[0]===dName)) nameSel.value=dName;
-    else { nameSel.value="other"; onVaccNameChange(id); row.querySelector(".vc_name_other").value=dName; }
-  }
-  if(dRoute) document.getElementById(id).querySelector(".vc_route").value=dRoute;
-  if(dWhen) document.getElementById(id).querySelector(".vc_when").value=dWhen;
+  const row=document.getElementById(id);
+  if(prefill.brand) row.querySelector(".vc_brand").value=prefill.brand;
+  if(prefill.valency) row.querySelector(".vc_valency").value=prefill.valency;
+  if(prefill.liveKilled) row.querySelector(".vc_livekilled").value=prefill.liveKilled;
+  if(prefill.route) row.querySelector(".vc_route").value=prefill.route;
+  if(prefill.dose) row.querySelector(".vc_dose").value=prefill.dose;
+  if(prefill.when) row.querySelector(".vc_when").value=prefill.when;
+  (prefill.diseases||[]).forEach(d=>{
+    const dId=typeof d==="string"?d:d.id;
+    const strain=typeof d==="string"?"":(d.strain||"");
+    const cb=row.querySelector(`.vc_disease[value="${dId}"]`);
+    if(cb){ cb.checked=true; onVaccDiseaseToggle(id,cb); }
+    if(strain){ const st=row.querySelector(`.vc_strain[data-disease="${dId}"]`); if(st) st.value=strain; }
+  });
 }
-function onVaccNameChange(rowId){
+function onVaccDiseaseToggle(rowId,cb){
   const row=document.getElementById(rowId); if(!row) return;
-  const isOther=row.querySelector(".vc_name").value==="other";
-  row.querySelector(".vc_name_other").style.display=isOther?"block":"none";
+  const strainEl=row.querySelector(`.vc_strain[data-disease="${cb.value}"]`);
+  if(strainEl) strainEl.style.display=cb.checked?"inline-block":"none";
+}
+function onVaccBrandInput(rowId){
+  const row=document.getElementById(rowId); if(!row) return;
+  const key=row.querySelector(".vc_brand").value.trim().toLowerCase();
+  const hit=VACC_INDEX[key];
+  if(!hit) return;
+  const valEl=row.querySelector(".vc_valency"), lkEl=row.querySelector(".vc_livekilled"),
+        routeEl=row.querySelector(".vc_route"), doseEl=row.querySelector(".vc_dose");
+  if(valEl && !valEl.value) valEl.value=hit.valency;
+  if(lkEl && !lkEl.value) lkEl.value=hit.liveKilled;
+  if(routeEl && !routeEl.value) routeEl.value=hit.route;
+  if(doseEl && !doseEl.value.trim()) doseEl.value=hit.dose;
+  // ملحوظة: عمر الأيام (vc_when) لا يُملأ تلقائيًا أبدًا — يُكتب يدويًا كل زيارة
+  (hit.diseases||[]).forEach(d=>{
+    const dId=typeof d==="string"?d:d.id;
+    const strain=typeof d==="string"?"":(d.strain||"");
+    const cb=row.querySelector(`.vc_disease[value="${dId}"]`);
+    if(cb && !cb.checked){ cb.checked=true; onVaccDiseaseToggle(rowId,cb); }
+    if(strain){
+      const st=row.querySelector(`.vc_strain[data-disease="${dId}"]`);
+      if(st && !st.value.trim()) st.value=strain;
+    }
+  });
 }
 function collectVaccs(){
   return [...document.querySelectorAll("#vaccRows .medcard")].map(r=>{
-    const sel=r.querySelector(".vc_name").value;
-    const isOther=sel==="other";
-    const nameAr=isOther?r.querySelector(".vc_name_other").value.trim():((VACC_NAMES.find(v=>v[0]===sel)||["",""])[1]);
+    const diseases=[...r.querySelectorAll(".vc_disease:checked")].map(cb=>({
+      id: cb.value,
+      strain: (r.querySelector(`.vc_strain[data-disease="${cb.value}"]`)||{}).value?.trim()||""
+    }));
+    const diseaseLabels=diseases.map(d=>{
+      const ar=(VACC_DISEASES.find(v=>v[0]===d.id)||["",d.id])[1];
+      return d.strain?`${ar} (${d.strain})`:ar;
+    });
     return {
-      diseaseId: isOther?"":sel,
-      name: nameAr,
+      brand: r.querySelector(".vc_brand").value.trim(),
+      valency: r.querySelector(".vc_valency").value,
+      liveKilled: r.querySelector(".vc_livekilled").value,
+      diseases,
+      name: diseaseLabels.join(" + ") || r.querySelector(".vc_brand").value.trim(),
+      dose: r.querySelector(".vc_dose").value.trim(),
       route: r.querySelector(".vc_route").value,
       when: r.querySelector(".vc_when").value.trim()
     };
-  }).filter(v=>v.name);
+  }).filter(v=>v.brand || v.name);
 }
 function addMedRow(){
   medCount++;
@@ -3466,7 +3545,7 @@ function editVisit(id){
   });
   document.getElementById("vaccRows").innerHTML=""; vaccCount=0;
   (v.vaccinesPrescribed||[]).forEach(vc=>{
-    addVaccRow(vc.diseaseId||vc.name, vc.route, vc.when);
+    addVaccRow({brand:vc.brand||vc.name, valency:vc.valency, liveKilled:vc.liveKilled, route:vc.route, dose:vc.dose, when:vc.when, diseases:vc.diseases});
   });
   document.getElementById("pendingMedResponses").innerHTML="";
 }
