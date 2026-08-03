@@ -198,6 +198,7 @@
   <button class="tab" data-tab="clients" onclick="showTab('clients')">👥 العملاء</button>
   <button class="tab" data-tab="newvisit" onclick="showTab('newvisit')">➕ تسجيل زيارة/متابعة</button>
   <button class="tab" data-tab="openflocks" onclick="showTab('openflocks')">🐔 الدورات المفتوحة</button>
+  <button class="tab" data-tab="consumption" onclick="showTab('consumption')">📦 استهلاك الأصناف</button>
 </div>
 
 <div class="wrap">
@@ -316,7 +317,13 @@
         <div class="field" id="v_feedPatternWrap" style="display:none"><label>نمط انخفاض/توقف العلف</label>
           <select id="v_feedPattern"><option value="">—</option><option value="gradual">نزول تدريجي</option><option value="sudden">سقوط/توقف مفاجئ</option></select></div>
         <div class="field"><label>العلف الفعلي المستهلك اليوم (كجم)</label>
-          <input id="v_feedActualKg" type="number" min="0" inputmode="decimal" oninput="refreshBreedTarget()">
+          <input id="v_feedActualKg" type="number" min="0" inputmode="decimal" oninput="refreshBreedTarget();updateWaterEstimate()">
+        </div>
+        <div class="field"><label>معامل الماء/العلف (حسب الجو، افتراضي 2.2)</label>
+          <input id="v_waterFactor" type="number" min="1" step="0.1" value="2.2" inputmode="decimal" oninput="updateWaterEstimate()">
+        </div>
+        <div class="field"><label>الماء المقدَّر (لتر/يوم)</label>
+          <input id="v_waterEstimateL" disabled>
         </div>
       </div>
 
@@ -537,6 +544,22 @@
     </div>
   </div>
 
+  <!-- ============ TAB: PRODUCT CONSUMPTION (استهلاك الأصناف شهريًا) ============ -->
+  <div class="panel" id="tab-consumption">
+    <div class="card">
+      <h2>📦 استهلاك صنف معيّن خلال شهر</h2>
+      <div class="small" style="color:#777;margin-bottom:8px">
+        بيحسب الكمية المطلوبة من الصنف بناءً على نص الجرعة المسجَّل في كل زيارة (الرقم الأول قبل "/" × عدد الأيام)، وبيقسمها على حجم العبوة. الزيارات اللي مش واضح فيها الجرعة أو المدة أو العبوة بتتعلّم "محتاج مراجعة يدوية" بدل ما يتحط رقم تخميني.
+      </div>
+      <div class="grid3">
+        <div class="field"><label>اسم الصنف</label><input id="cons_drug" list="drugSuggestions" placeholder="اكتب اسم الدواء…"></div>
+        <div class="field"><label>الشهر</label><input id="cons_month" type="month"></div>
+        <div class="field" style="align-self:end"><button class="btn pri" style="width:100%" onclick="runConsumptionReport()">🔍 احسب الاستهلاك</button></div>
+      </div>
+      <div id="consumptionResults"></div>
+    </div>
+  </div>
+
   <!-- ============ CLIENT DETAIL (overlay panel) ============ -->
   <div class="panel" id="tab-clientdetail">
     <div class="card" id="cd_printarea">
@@ -648,6 +671,18 @@ const PROD_DROP_TABLE = [
   {min:30,max:50,ar:"EDS-76 (بدون أعراض أخرى غالباً)"},
   {min:10,max:100,ar:"إنفلونزا الطيور / النيوكاسل (ضيق تنفس شديد، إسهال، أعراض عصبية، نفوق مرتفع)"}
 ];
+function updateWaterEstimate(){
+  const out=document.getElementById("v_waterEstimateL");
+  if(!out) return;
+  const factor=parseFloat(document.getElementById("v_waterFactor").value)||2.2;
+  let feedKg=parseFloat(document.getElementById("v_feedActualKg").value);
+  if(isNaN(feedKg)){
+    // لو مفيش علف فعلي مكتوب، استخدم المرجعي المحسوب من السلالة (لو متاح)
+    feedKg=window.__lastDailyFeedTargetKg;
+  }
+  if(isNaN(feedKg) || feedKg==null || feedKg<=0){ out.value=""; return; }
+  out.value=(feedKg*factor).toFixed(0)+" لتر تقريبًا";
+}
 function refreshBreedTarget(){
   const host=document.getElementById("breedTargetHint");
   if(!host) return;
@@ -657,7 +692,7 @@ function refreshBreedTarget(){
   const flock=window.__matchedFlockId?STATE.flocks.find(f=>f.id===window.__matchedFlockId):null;
   if(flock){ bt=flock.birdType; breed=flock.breed; }
   else { bt=document.getElementById("nf_birdtype").value; breed=document.getElementById("nf_breed").value; }
-  if(!bt || !breed || isNaN(age) || age<1){ host.textContent=""; return; }
+  if(!bt || !breed || isNaN(age) || age<1){ host.textContent=""; window.__lastDailyFeedTargetKg=null; updateWaterEstimate(); return; }
 
   if(bt==="broiler"||bt==="sasso"||bt==="baladi"){
     const b=BREEDS[breed]||BREEDS["other_broiler"];
@@ -668,6 +703,7 @@ function refreshBreedTarget(){
       const cumAt=a=>{a=Math.max(1,a);return (refInterp(b.w,a)/1000)*refInterp(b.fcr,a);};
       const dailyPerBirdKg=Math.max(0, cumAt(age)-cumAt(age-1));
       const dailyTotalKg=dailyPerBirdKg*birdCount;
+      window.__lastDailyFeedTargetKg=dailyTotalKg;
       let feedVerdict="";
       const actualKg=parseFloat(document.getElementById("v_feedActualKg").value);
       if(!isNaN(actualKg) && dailyTotalKg>0){
@@ -700,6 +736,7 @@ function refreshBreedTarget(){
       host.innerHTML=`🎯 مرجعي ${b.name} — إنتاج أسبوع ${wk}: Hen-Day% مستهدف ~${hd.toFixed(0)}% · وزن البيضة المستهدف ~${ew.toFixed(0)} جم.${extra}`;
     }
   } else host.textContent="";
+  updateWaterEstimate();
 }
 const TOLERANCE_DAYS = 7;       // فرق مسموح به بين تاريخ التحميل المفترض والفعلي
 const BIRDCOUNT_TOLERANCE = 0.25; // نسبة فرق العدد المسموح بها قبل الاشتباه في دورة مختلفة
@@ -1944,7 +1981,7 @@ function startListeners(){
 function showTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
-  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail"};
+  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail",consumption:"tab-consumption"};
   document.getElementById(map[name]).classList.add("active");
   if(name==="openflocks") renderOpenFlocks();
   if(name==="dashboard") renderDashboard();
@@ -2155,6 +2192,8 @@ function renderClientDetail(id){
           <div class="row" style="margin-top:4px">
             <button class="btn sm" onclick="editVisit('${v.id}')">✏️ تعديل الزيارة</button>
             ${(meds.length||v.opinion||v.treatmentPlan)?`<button class="btn sm" onclick="printSavedVisitPrescription('${v.id}')">🖨️ روشتة PDF</button>`:''}
+            <button class="btn sm" onclick="exportFullVisitReportPDF('${v.id}')">📄 تقرير شامل PDF</button>
+            <button class="btn sm" onclick="exportFullVisitReportPDF('${v.id}',true)" title="يشمل تفاصيل الآفات والتشخيص التفريقي الكاملة">🔬 + تفاصيل التشريح</button>
             <button class="btn sm danger" onclick="deleteVisit('${v.id}')">🗑 حذف</button>
           </div>
         </div>`;
@@ -2368,6 +2407,200 @@ async function exportClientReportPDF(evt){
     alert("⚠ تعذّر توليد التقرير: "+(e.message||e));
   }finally{
     if(btn){btn.disabled=false; btn.textContent=oldTxt;}
+  }
+}
+/* ---------------------- تقرير شامل PDF لزيارة واحدة — يجمع كل الحقول المُدخلة ---------------------- */
+async function exportFullVisitReportPDF(visitId,includeDxDetail){
+  const v=STATE.visits.find(x=>x.id===visitId); if(!v){alert("الزيارة غير موجودة.");return;}
+  const client=STATE.clients.find(c=>c.id===v.clientId);
+  const flock=STATE.flocks.find(f=>f.id===v.flockId);
+  try{
+    const logo=new Image(); logo.src=LOGO_B64;
+    let logoOk=true;
+    await Promise.race([
+      new Promise((res)=>{logo.onload=res; logo.onerror=()=>{logoOk=false; res();};}),
+      new Promise((res)=>setTimeout(()=>{logoOk=false; res();}, 4000))
+    ]);
+    const scale=2.4;
+    const W=Math.round(210*scale*3.7795), H=Math.round(297*scale*3.7795);
+    const pages=[]; let canvas, ctx, y;
+    function newPage(){
+      canvas=document.createElement("canvas"); canvas.width=W; canvas.height=H;
+      ctx=canvas.getContext("2d");
+      ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+      const logoSize=W*0.11, logoX=(W-logoSize)/2, logoY=H*0.025;
+      if(logoOk){ try{ ctx.drawImage(logo, logoX, logoY, logoSize, logoSize); }catch(e){} }
+      ctx.direction="rtl"; ctx.textAlign="center"; ctx.fillStyle="#1c6b45";
+      ctx.font=`bold ${Math.round(20*scale)}px Tahoma, Arial`;
+      ctx.fillText("تقرير شامل للزيارة — مركز د. السيد الغمري", W/2, logoY+(logoOk?logoSize:0)+Math.round(30*scale));
+      y=logoY+(logoOk?logoSize:0)+Math.round(55*scale);
+      ctx.strokeStyle="#DADADA"; ctx.beginPath(); ctx.moveTo(W*0.07,y); ctx.lineTo(W*0.93,y); ctx.stroke();
+      y+=Math.round(20*scale);
+      ctx.direction="rtl"; ctx.textAlign="right"; ctx.fillStyle="#1a1a1a";
+    }
+    function finalizePage(){ pages.push(canvas.toDataURL("image/jpeg",0.95)); }
+    const bottomLimit=H*0.96;
+    function ensureSpace(need){ if(y+need>bottomLimit){ finalizePage(); newPage(); } }
+    function line(text,{size=15,bold=false,gap=6,color="#1a1a1a",maxWidthFrac=0.86}={}){
+      if(!text) return;
+      ctx.font=`${bold?"bold ":""}${Math.round(size*scale)}px Tahoma, Arial`;
+      ctx.fillStyle=color;
+      const lh=Math.round((size+6)*scale);
+      const words=(text||"").split(/\s+/).filter(Boolean);
+      let ln=""; const maxW=W*maxWidthFrac; const chunks=[];
+      words.forEach(w=>{
+        const test=ln?ln+" "+w:w;
+        if(ctx.measureText(test).width>maxW && ln){ chunks.push(ln); ln=w; } else ln=test;
+      });
+      if(ln)chunks.push(ln);
+      chunks.forEach(c=>{ ensureSpace(lh); ctx.fillText(c, W*0.93, y); y+=lh; });
+      y+=Math.round(gap*scale);
+    }
+    function heading(text){ ensureSpace(30*scale); line(text,{size:18,bold:true,gap:8,color:"#1c6b45"}); }
+    function divider(){ ensureSpace(14*scale); ctx.strokeStyle="#E5E5E5"; ctx.beginPath(); ctx.moveTo(W*0.07,y); ctx.lineTo(W*0.93,y); ctx.stroke(); y+=Math.round(16*scale); }
+
+    newPage();
+    // بيانات العميل والدورة
+    line(client?client.name:"—",{size:22,bold:true,gap:3});
+    line(`${client?.phone||''} ${client?.address?'· '+client.address:''}`.trim(),{size:13,gap:10,color:"#555"});
+    if(flock){
+      const breedName=(flock.birdType==="layer"||flock.birdType==="breeder")?((BREEDS_L[flock.breed]||{}).name):((BREEDS[flock.breed]||{}).name);
+      line(`${flock.houseName||flock.flockCode} — ${BIRD_LABEL[flock.birdType]||flock.birdType}${breedName?' ('+breedName+')':''} — تحميل ${flock.placementDate} — ${flock.status==='closed'?'مغلقة':'مفتوحة'}`,{size:14,gap:12,color:"#333"});
+    }
+    divider();
+
+    // بيانات الزيارة الأساسية
+    heading("بيانات الزيارة");
+    line(`التاريخ: ${v.date||'—'}  ·  المكان: ${v.visitLocation==='lab'?'معمل':'مزرعة'}  ·  العمر: ${v.ageDays??'—'} يوم  ·  عدد الطيور: ${v.birdCount??'—'}`);
+    if(v.complaint) line(`الشكوى الرئيسية: ${v.complaint}`);
+    if(v.sampleAlive||v.sampleDead) line(`عينة الفحص: حية ${v.sampleAlive||0} — نافقة ${v.sampleDead||0}`);
+    divider();
+
+    // النفوق
+    if((v.mortalityLog&&v.mortalityLog.length)||v.mortalityDaily||v.mortalityCum){
+      heading("سجل النفوق");
+      (v.mortalityLog||[]).forEach(m=>{
+        const pct=(v.birdCount&&m.dead!=null)?((m.dead/v.birdCount)*100).toFixed(2)+'%':'—';
+        line(`${m.date||'—'}: نافق ${m.dead??0} (${pct})`,{size:14,gap:3});
+      });
+      line(`النفوق اليومي: ${v.mortalityDaily||'—'}%  ·  التراكمي: ${v.mortalityCum||'—'}%`,{size:14,bold:true,gap:8});
+      divider();
+    }
+
+    // العلف والإنتاج
+    if(v.feed||v.feedActualKg||v.production||v.trays){
+      heading("العلف والإنتاج");
+      if(v.feed) line(`استهلاك العلف: ${v.feed}${v.feedPattern?' — نمط: '+(v.feedPattern==='gradual'?'نزول تدريجي':'سقوط مفاجئ'):''}${v.feedActualKg?' — الفعلي: '+v.feedActualKg+' كجم/يوم':''}`);
+      if(v.waterEstimateL) line(`الماء المقدَّر: ${v.waterEstimateL}${v.waterFactor?' (معامل '+v.waterFactor+')':''}`);
+      if(v.trays||v.production) line(`الإنتاج: ${v.trays?v.trays+' طبق — ':''}${v.production?v.production+'%':''}`);
+      divider();
+    }
+
+    // ملاحظات ميدانية سريعة
+    const fs=v.fieldSignals||{};
+    if(fs.posture||fs.distribution||fs.behavior||fs.dropInt||fs.dropCecal||fs.litter||fs.pecking){
+      heading("ملاحظات ميدانية سريعة");
+      const fsLabels={
+        posture:{belly_back:"على البطن/الظهر",back_wings:"جناحين مفرودين",good_crop:"حوصلة ممتلئة",ascites_fluid:"بطن ممتلئ سوائل",choking:"اختناق",seal:"وضعية الفقمة"},
+        distribution:{even:"متساوٍ",walls:"تجمّع بالحوائط",zebra:"خط الزيبرا",under_lamps:"تجمّع تحت اللمبات"},
+        behavior:{normal:"طبيعي",slow_rise:"بطيء بالقيام",stays_down:"يفضل قاعد"},
+        dropInt:{ok:"طبيعي",mid:"متوسط",bad:"غير سليم"},
+        dropCecal:{ok:"طبيعي",bad:"سوء هضم"},
+        litter:{dry:"جافة",damp_local:"مبللة موضعياً",wet_all:"مبللة بالكامل"},
+        pecking:{none:"لا يوجد",aggressive:"نقر عدواني",feather:"نقر ريش"}
+      };
+      const parts=[];
+      if(fs.posture) parts.push("وضعية النافق: "+(fsLabels.posture[fs.posture]||fs.posture));
+      if(fs.distribution) parts.push("التوزيع: "+(fsLabels.distribution[fs.distribution]||fs.distribution));
+      if(fs.behavior) parts.push("السلوك: "+(fsLabels.behavior[fs.behavior]||fs.behavior));
+      if(fs.dropInt) parts.push("براز الأمعاء: "+(fsLabels.dropInt[fs.dropInt]||fs.dropInt));
+      if(fs.dropCecal) parts.push("براز الأعورين: "+(fsLabels.dropCecal[fs.dropCecal]||fs.dropCecal));
+      if(fs.litter) parts.push("الفرشة: "+(fsLabels.litter[fs.litter]||fs.litter));
+      if(fs.pecking) parts.push("النقر: "+(fsLabels.pecking[fs.pecking]||fs.pecking));
+      parts.forEach(p=>line(p,{size:14,gap:3}));
+      divider();
+    }
+
+    // الفحص الفني للمزرعة
+    const fi=formatFarmInspection(v.farmInspection);
+    if(fi){ heading("الفحص الفني للمزرعة"); line(fi,{size:14}); divider(); }
+
+    // السيرولوجيا
+    if(v.serology&&v.serology.length){
+      heading("النتائج السيرولوجية");
+      v.serology.forEach(s=>{
+        line(`${s.disease||s.diseaseId||'—'} — ${s.test||''} — العمر ${s.age??'—'} — GMT ${s.titer??'—'} — CV% ${s.cv??'—'} — ${s.significance||''}`,{size:14,gap:3});
+      });
+      divider();
+    }
+
+    // التشخيص المؤكَّد (دايمًا يظهر) + تفاصيل التشريح (اختياري بس)
+    const dx=v.diagnosis||{};
+    const confirmed=confirmedDxLabels(v);
+    if(confirmed || includeDxDetail){
+      heading("التشخيص");
+      if(confirmed) line(`✅ التشخيص المؤكَّد: ${confirmed}`,{size:15,bold:true,gap:6,color:"#1c6b45"});
+      else if(!includeDxDetail) line("لم يُسجَّل تشخيص مؤكَّد لهذه الزيارة.",{size:13,color:"#8a8a8a"});
+    }
+    if(includeDxDetail){
+      line(`عدد العينات المُشرَّحة: ${dx.nbirds||'—'}`,{size:14});
+      if(dx.lesions&&dx.lesions.length){
+        const byOrgan={};
+        dx.lesions.forEach(l=>{
+          const lid=typeof l==="string"?l:l.id;
+          const les=LES_BY_ID[lid]; if(!les) return;
+          const org=ORGANS.find(o=>o.id===les[1]);
+          const orgName=org?org.ar:les[1];
+          (byOrgan[orgName]=byOrgan[orgName]||[]).push(les[2]);
+        });
+        Object.keys(byOrgan).forEach(org=>{
+          line(`${org}: ${byOrgan[org].join('، ')}`,{size:13,gap:3,color:"#333"});
+        });
+      } else line("لا توجد آفات مسجّلة.",{size:13,color:"#8a8a8a"});
+      if(dx.topDiagnoses&&dx.topDiagnoses.length){
+        y+=Math.round(6*scale);
+        dx.topDiagnoses.forEach((t,i)=>line(`${i===0?'🔬 المشتبه الأول':'يليه'}: ${t.ar} (${t.score})`,{size:14,bold:i===0,gap:3}));
+      }
+      if(dx.composites&&dx.composites.length) line(`متلازمات مركّبة: ${dx.composites.join('، ')}`,{size:13,gap:3});
+    }
+    divider();
+
+    // التاريخ العلاجي والوقائي
+    if(v.prevMedications||v.lastVaccine){
+      heading("التاريخ العلاجي والوقائي");
+      if(v.prevMedications) line(`الأدوية السابقة: ${v.prevMedications}`,{size:14});
+      if(v.lastVaccine) line(`التحصينات (سجل حر): ${v.lastVaccine}`,{size:14});
+      divider();
+    }
+
+    // الرأي وخطة العلاج
+    if(v.opinion||v.treatmentPlan){
+      heading("الرأي الطبي وخطة العلاج");
+      if(v.opinion) line(v.opinion,{size:14});
+      if(v.treatmentPlan) line(v.treatmentPlan,{size:14});
+      divider();
+    }
+
+    // الأدوية الموصوفة
+    if(v.medications&&v.medications.length){
+      heading("الأدوية الموصوفة");
+      v.medications.forEach(m=>line(formatMedLine(m),{size:13,gap:3}));
+      divider();
+    }
+
+    // التحصينات الموصوفة
+    if(v.vaccinesPrescribed&&v.vaccinesPrescribed.length){
+      heading("التحصينات الموصوفة");
+      v.vaccinesPrescribed.forEach(vc=>line(formatVaccLine(vc),{size:13,gap:3}));
+      divider();
+    }
+
+    finalizePage();
+    const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
+    pages.forEach((dataUrl,i)=>{ if(i>0)pdf.addPage(); pdf.addImage(dataUrl,"JPEG",0,0,210,297); });
+    pdf.save(`تقرير-شامل-${client?client.name:'عميل'}-${v.date||''}.pdf`);
+  }catch(e){
+    alert("⚠ تعذّر توليد التقرير الشامل: "+(e.message||e));
   }
 }
 function exportFlockExcel(flockId){
@@ -2757,6 +2990,253 @@ function onMedDrugInput(rowId){
     if(doseEl && !doseEl.value.trim()) doseEl.value=hit.dose;
     if(packEl && !packEl.value.trim()) packEl.value=hit.pack;
     if(purpEl && !purpEl.value && hit.purpose) purpEl.value=hit.purpose;
+  }
+}
+/* ==================================================================================
+   محلل الجرعة النصية لحساب الاستهلاك الشهري لصنف معيّن
+   القاعدة المتفق عليها مع د. السيد:
+   - الكمية المطلوبة = (الرقم قبل "/" = جرعة اليوم) × (عدد أيام العلاج) ÷ (حجم العبوة)
+   - الرقم بعد "/" (كمية المياه، مثل "1000 لتر") لا يدخل في الحساب إطلاقًا — مجرد مرجع وصفي
+   - جرعة متقطعة "(يوم وأيوم)": عدد أيام الجرعة الفعلية = نصف مدة الكورس مقرّبة لأعلى
+   - "جرعتين في اليوم": الكمية اليومية ×2
+   - "مرة كل K أيام": عدد الجرعات الفعلية = (مدة الكورس ÷ K) بالقسمة الصحيحة لأسفل
+   - أي نص مش واضح (رقم/وحدة/مدة/عبوة) → "محتاج مراجعة يدوية" بدل رقم تخميني
+   ================================================================================== */
+function normalizeDoseDigits(s){
+  return (s||"").replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+}
+const UNIT_FAMILY={ "سم":"vol","مل":"vol","لتر":"vol", "جم":"mass","جرام":"mass","كجم":"mass","كيلو":"mass" };
+const UNIT_TO_BASE={ "سم":1,"مل":1,"لتر":1000, "جم":1,"جرام":1,"كجم":1000,"كيلو":1000 };
+const UNIT_RE="(سم3|سم|مل|جم|جرام|كجم|كيلو|لتر)";
+function normUnit(u){ return u==="سم3"?"سم":u; }
+function parseLeadingAmount(text){
+  let t=text.trim(), wordMul=null;
+  const wm=t.match(/^(نص|ربع)\s*/);
+  if(wm){ wordMul=(wm[1]==="نص")?0.5:0.25; t=t.slice(wm[0].length); }
+  const m=t.match(new RegExp("^([\\d.,]+)\\s*"+UNIT_RE));
+  if(m) return {amount:(wordMul!=null?wordMul:parseFloat(m[1].replace(",","."))), unit:normUnit(m[2])};
+  if(wordMul!=null){
+    const m2=t.match(new RegExp("^"+UNIT_RE));
+    if(m2) return {amount:wordMul, unit:normUnit(m2[1])};
+  }
+  return null;
+}
+function findAnyAmount(text){
+  const wm=text.match(new RegExp("(نص|ربع)\\s*"+UNIT_RE));
+  if(wm) return {amount:(wm[1]==="نص"?0.5:0.25), unit:normUnit(wm[2])};
+  const m=text.match(new RegExp("([\\d.,]+)\\s*"+UNIT_RE));
+  if(m) return {amount:parseFloat(m[1].replace(",",".")), unit:normUnit(m[2])};
+  // وحدة مذكورة بمفردها من غير رقم قبلها (مثل "لتر" أو "زجاجة لتر") تُفهم كـ"1"
+  const bare=text.match(new RegExp(UNIT_RE));
+  if(bare) return {amount:1, unit:normUnit(bare[1])};
+  return null;
+}
+function parseDoseForConsumption(doseRaw){
+  const raw=(doseRaw||"").trim();
+  if(!raw) return {ok:false, reason:"لا يوجد نص جرعة مسجَّل", raw};
+  const text=normalizeDoseDigits(raw);
+  const lead=parseLeadingAmount(text);
+  if(!lead) return {ok:false, reason:"تعذّر التعرّف على رقم/وحدة الجرعة في بداية النص", raw};
+  let N=null;
+  const mN=text.match(/(?:لمدة|\*|×|لـ)\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
+  if(mN) N=parseFloat(mN[1].replace(",","."));
+  else if(/يومين/.test(text)) N=2;
+  if(N==null) return {ok:false, reason:"تعذّر تحديد عدد أيام العلاج من النص", raw, dose:lead};
+  let pattern="daily", multiplier=1, effectiveDays=N, intervalK=null;
+  const mInterval=text.match(/كل\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
+  const isIntermittent=/يوم\s*و\s*(?:أ|ا)?يوم/.test(text) || /متقطع/.test(text);
+  const isTwice=/جرعتين|مرتين/.test(text);
+  if(mInterval){
+    intervalK=parseFloat(mInterval[1].replace(",","."));
+    effectiveDays=Math.floor(N/intervalK);
+    pattern="interval";
+  } else if(isIntermittent){
+    effectiveDays=Math.ceil(N/2);
+    pattern="intermittent";
+  } else if(isTwice){
+    multiplier=2;
+    pattern="twice";
+  }
+  const totalBase=lead.amount*multiplier*effectiveDays*(UNIT_TO_BASE[lead.unit]||1);
+  const family=UNIT_FAMILY[lead.unit]||null;
+  return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, effectiveDays, multiplier, pattern, intervalK, totalBase, family};
+}
+function parsePackForConsumption(packRaw){
+  const raw=(packRaw||"").trim();
+  if(!raw) return {ok:false, reason:"لا يوجد حجم عبوة مسجَّل", raw};
+  const text=normalizeDoseDigits(raw);
+  const found=findAnyAmount(text);
+  if(!found) return {ok:false, reason:"تعذّر التعرّف على حجم العبوة من النص", raw};
+  const base=found.amount*(UNIT_TO_BASE[found.unit]||1);
+  const family=UNIT_FAMILY[found.unit]||null;
+  return {ok:true, raw, amount:found.amount, unit:found.unit, base, family};
+}
+function computeMedicationNeed(m){
+  const dose=parseDoseForConsumption(m.dose);
+  if(!dose.ok) return {ok:false, reason:dose.reason, dose};
+  const pack=parsePackForConsumption(m.pack);
+  if(!pack.ok) return {ok:false, reason:"الجرعة مفهومة لكن "+pack.reason, dose, pack};
+  if(dose.family!==pack.family) return {ok:false, reason:`وحدة الجرعة (${dose.unit}) ووحدة العبوة (${pack.unit}) من نوعين مختلفين (وزن/حجم) — محتاج مراجعة يدوية`, dose, pack};
+  const packagesNeeded=Math.ceil(dose.totalBase/pack.base);
+  return {ok:true, dose, pack, totalBase:dose.totalBase, packagesNeeded};
+}
+const PATTERN_LABEL={daily:"يومية", interval:"دورية (كل عدة أيام)", intermittent:"متقطعة (يوم وأيوم)", twice:"مرتين يوميًا"};
+let LAST_CONSUMPTION_DATA=null; // للاستخدام في تصدير الـ PDF
+function computeMonthlyConsumption(drugName, yearMonth){
+  const key=(drugName||"").trim().toLowerCase();
+  if(!key || !yearMonth) return [];
+  const [y,mo]=yearMonth.split("-");
+  const entries=[];
+  STATE.visits.forEach(v=>{
+    if(!v.date) return;
+    const parts=v.date.split("-");
+    if(parts[0]!==y || parts[1]!==mo) return;
+    (v.medications||[]).forEach(m=>{
+      if((m.drug||"").trim().toLowerCase()!==key) return;
+      const client=STATE.clients.find(c=>c.id===v.clientId);
+      entries.push({date:v.date, clientName:client?client.name:"—", doseRaw:m.dose||"", packRaw:m.pack||"", calc:computeMedicationNeed(m)});
+    });
+  });
+  entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  return entries;
+}
+function baseAmountLabel(totalBase, family){
+  if(family==="mass") return totalBase>=1000 ? (totalBase/1000).toFixed(2)+" كجم" : totalBase.toFixed(1)+" جم";
+  if(family==="vol") return totalBase>=1000 ? (totalBase/1000).toFixed(2)+" لتر" : totalBase.toFixed(1)+" سم";
+  return totalBase.toFixed(1);
+}
+function runConsumptionReport(){
+  const drug=document.getElementById("cons_drug").value.trim();
+  const month=document.getElementById("cons_month").value;
+  const host=document.getElementById("consumptionResults");
+  if(!drug || !month){ host.innerHTML=`<div class="small" style="color:#b00">من فضلك اكتب اسم الصنف واختَر الشهر.</div>`; return; }
+  const entries=computeMonthlyConsumption(drug, month);
+  LAST_CONSUMPTION_DATA={drug, month, entries};
+  if(!entries.length){ host.innerHTML=`<div class="small" style="color:#777;margin-top:10px">لا توجد زيارات مسجَّلة بهذا الصنف خلال الشهر المحدَّد.</div>`; return; }
+  // تجميع حسب نص العبوة (لأن حجم العبوة ممكن يختلف من روشتة لأخرى لنفس الصنف)
+  const packGroups={}; // packRaw -> {base, family, packagesNeeded(recompute at end), okCount}
+  let totalOkBase=null, totalFamily=null, manualCount=0;
+  const rows=entries.map(e=>{
+    const c=e.calc;
+    if(c.ok){
+      const g=packGroups[e.packRaw]||(packGroups[e.packRaw]={base:0, family:c.dose.family});
+      g.base+=c.totalBase;
+      if(totalFamily===null) totalFamily=c.dose.family;
+      if(totalFamily===c.dose.family) totalOkBase=(totalOkBase||0)+c.totalBase;
+      return `<tr>
+        <td>${e.date}</td><td>${e.clientName}</td><td>${e.doseRaw}</td><td>${e.packRaw||'—'}</td>
+        <td>${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}</td>
+        <td>${baseAmountLabel(c.totalBase, c.dose.family)}</td>
+        <td>${c.packagesNeeded} عبوة</td>
+      </tr>`;
+    } else {
+      manualCount++;
+      return `<tr style="background:#fff3f3">
+        <td>${e.date}</td><td>${e.clientName}</td><td>${e.doseRaw}</td><td>${e.packRaw||'—'}</td>
+        <td colspan="3" style="color:#b00">⚠️ محتاج مراجعة يدوية — ${c.reason}</td>
+      </tr>`;
+    }
+  }).join("");
+  const packSummary=Object.keys(packGroups).map(pk=>{
+    const g=packGroups[pk];
+    const pack=parsePackForConsumption(pk);
+    const need=pack.ok ? Math.ceil(g.base/pack.base) : null;
+    return `<li>عبوة "${pk}": إجمالي ${baseAmountLabel(g.base, g.family)}${need!=null?` ⇐ يحتاج <b>${need} عبوة</b>`:''}</li>`;
+  }).join("");
+  host.innerHTML=`
+    <div style="margin-top:14px">
+      <div class="small" style="color:#555;margin-bottom:6px">
+        إجمالي عدد الزيارات المسجَّلة لهذا الصنف: <b>${entries.length}</b>
+        ${manualCount?` — <span style="color:#b00">${manualCount} منها محتاج مراجعة يدوية</span>`:''}
+      </div>
+      ${packSummary?`<ul style="margin:6px 0 12px 18px">${packSummary}</ul>`:''}
+      <div style="overflow-x:auto">
+      <table class="tbl" style="width:100%;font-size:13px">
+        <thead><tr><th>التاريخ</th><th>العميل</th><th>الجرعة (كما كُتبت)</th><th>العبوة</th><th>نمط الجرعة</th><th>الكمية المحسوبة</th><th>عدد العبوات</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm pri" onclick="exportConsumptionReportPDF()">📄 تصدير تقرير PDF</button>
+      </div>
+    </div>`;
+}
+async function exportConsumptionReportPDF(){
+  if(!LAST_CONSUMPTION_DATA || !LAST_CONSUMPTION_DATA.entries.length){ alert("احسب الاستهلاك أولاً."); return; }
+  const {drug, month, entries}=LAST_CONSUMPTION_DATA;
+  try{
+    const logo=new Image(); logo.src=LOGO_B64;
+    let logoOk=true;
+    await Promise.race([
+      new Promise((res)=>{logo.onload=res; logo.onerror=()=>{logoOk=false; res();};}),
+      new Promise((res)=>setTimeout(()=>{logoOk=false; res();}, 4000))
+    ]);
+    const scale=2.4;
+    const W=Math.round(210*scale*3.7795), H=Math.round(297*scale*3.7795);
+    const pages=[]; let canvas, ctx, y;
+    function newPage(){
+      canvas=document.createElement("canvas"); canvas.width=W; canvas.height=H;
+      ctx=canvas.getContext("2d");
+      ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+      const logoSize=W*0.11, logoX=(W-logoSize)/2, logoY=H*0.025;
+      if(logoOk){ try{ ctx.drawImage(logo, logoX, logoY, logoSize, logoSize); }catch(e){} }
+      ctx.direction="rtl"; ctx.textAlign="center"; ctx.fillStyle="#1c6b45";
+      ctx.font=`bold ${Math.round(20*scale)}px Tahoma, Arial`;
+      ctx.fillText(`تقرير استهلاك صنف — ${drug}`, W/2, logoY+(logoOk?logoSize:0)+Math.round(30*scale));
+      ctx.font=`${Math.round(13*scale)}px Tahoma, Arial`; ctx.fillStyle="#555";
+      ctx.fillText(`شهر ${month}`, W/2, logoY+(logoOk?logoSize:0)+Math.round(52*scale));
+      y=logoY+(logoOk?logoSize:0)+Math.round(75*scale);
+      ctx.strokeStyle="#DADADA"; ctx.beginPath(); ctx.moveTo(W*0.07,y); ctx.lineTo(W*0.93,y); ctx.stroke();
+      y+=Math.round(20*scale);
+      ctx.direction="rtl"; ctx.textAlign="right"; ctx.fillStyle="#1a1a1a";
+    }
+    function finalizePage(){ pages.push(canvas.toDataURL("image/jpeg",0.95)); }
+    const bottomLimit=H*0.94;
+    function ensureSpace(need){ if(y+need>bottomLimit){ finalizePage(); newPage(); } }
+    function line(text,{size=15,bold=false,gap=6,color="#1a1a1a",maxWidthFrac=0.86}={}){
+      ctx.font=`${bold?"bold ":""}${Math.round(size*scale)}px Tahoma, Arial`;
+      ctx.fillStyle=color;
+      const lh=Math.round((size+7)*scale);
+      const words=(text||"").split(/\s+/).filter(Boolean);
+      let ln=""; const maxW=W*maxWidthFrac; const chunks=[];
+      words.forEach(w=>{ const test=ln?ln+" "+w:w; if(ctx.measureText(test).width>maxW && ln){ chunks.push(ln); ln=w; } else ln=test; });
+      if(ln)chunks.push(ln);
+      chunks.forEach(c=>{ ensureSpace(lh); ctx.fillText(c, W*0.93, y); y+=lh; });
+      y+=Math.round(gap*scale);
+    }
+    function divider(){ ensureSpace(14*scale); ctx.strokeStyle="#E5E5E5"; ctx.beginPath(); ctx.moveTo(W*0.07,y); ctx.lineTo(W*0.93,y); ctx.stroke(); y+=Math.round(16*scale); }
+
+    newPage();
+    let manualCount=0;
+    const packGroups={};
+    entries.forEach(e=>{
+      const c=e.calc;
+      line(`${e.date} — ${e.clientName}`, {size:15, bold:true, gap:2});
+      line(`الجرعة: ${e.doseRaw}${e.packRaw?' — العبوة: '+e.packRaw:''}`, {size:13, gap:2, color:"#555"});
+      if(c.ok){
+        line(`✅ ${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern} — الكمية: ${baseAmountLabel(c.totalBase, c.dose.family)} — العبوات: ${c.packagesNeeded}`, {size:13, gap:8, color:"#1c6b45"});
+        const g=packGroups[e.packRaw]||(packGroups[e.packRaw]={base:0, family:c.dose.family});
+        g.base+=c.totalBase;
+      } else {
+        manualCount++;
+        line(`⚠️ محتاج مراجعة يدوية — ${c.reason}`, {size:13, gap:8, color:"#b00000"});
+      }
+    });
+    divider();
+    line("الملخّص الإجمالي", {size:18, bold:true, gap:6});
+    line(`عدد الزيارات: ${entries.length}${manualCount?` — منها ${manualCount} محتاج مراجعة يدوية`:''}`, {size:14, gap:6, color:"#555"});
+    Object.keys(packGroups).forEach(pk=>{
+      const g=packGroups[pk];
+      const pack=parsePackForConsumption(pk);
+      const need=pack.ok?Math.ceil(g.base/pack.base):null;
+      line(`عبوة "${pk||'غير محدَّدة'}": إجمالي ${baseAmountLabel(g.base, g.family)}${need!=null?' — يحتاج '+need+' عبوة':''}`, {size:14, gap:4});
+    });
+    finalizePage();
+    const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
+    pages.forEach((dataUrl,i)=>{ if(i>0)pdf.addPage(); pdf.addImage(dataUrl,"JPEG",0,0,210,297); });
+    pdf.save(`استهلاك-${drug}-${month}.pdf`);
+  }catch(e){
+    alert("⚠ تعذّر توليد التقرير: "+(e.message||e));
   }
 }
 const VACC_DISEASES=[
@@ -3359,6 +3839,8 @@ async function saveVisitInner(clientId,date){
     fieldSignals: collectFieldSignals(),
     feed:document.getElementById("v_feed").value,
     feedActualKg:document.getElementById("v_feedActualKg").value,
+    waterFactor:document.getElementById("v_waterFactor").value,
+    waterEstimateL:document.getElementById("v_waterEstimateL").value,
     feedPattern:document.getElementById("v_feedPattern").value,
     trays:document.getElementById("v_trays").value,
     production:document.getElementById("v_prod").value,
@@ -3430,6 +3912,9 @@ async function saveVisitInner(clientId,date){
   document.getElementById("nf_birdtype").value="broiler";
   populateBreedSelect();
   document.getElementById("breedTargetHint").textContent="";
+  document.getElementById("v_waterFactor").value="2.2";
+  document.getElementById("v_waterEstimateL").value="";
+  window.__lastDailyFeedTargetKg=null;
   document.getElementById("dx_nbirds").value="5"; document.getElementById("dx_nbirds").dataset.auto="1";
   document.getElementById("nf_placement").dataset.auto="1";
   confirmedDxList=[]; renderConfirmedDxChips(); document.getElementById("nv_location").value="farm";
@@ -3469,6 +3954,8 @@ function editVisit(id){
   }
   document.getElementById("v_feed").value=v.feed||""; onFeedChange();
   document.getElementById("v_feedActualKg").value=v.feedActualKg||"";
+  document.getElementById("v_waterFactor").value=v.waterFactor||"2.2";
+  document.getElementById("v_waterEstimateL").value=v.waterEstimateL||"";
   document.getElementById("v_feedPattern").value=v.feedPattern||"";
   document.getElementById("v_trays").value=v.trays||"";
   document.getElementById("v_prod").value=v.production||"";
