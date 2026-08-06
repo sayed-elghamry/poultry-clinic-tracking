@@ -3163,7 +3163,7 @@ function checkFlockMatch(){
     document.getElementById("pendingMedResponses").innerHTML="";
     newFields.style.display="block";
     const client=STATE.clients.find(c=>c.id===clientId);
-    if(client && !document.getElementById("nf_birdtype").dataset.touched){ document.getElementById("nf_birdtype").value=client.birdType; populateBreedSelect(); }
+    if(client && !document.getElementById("nf_birdtype").dataset.touched){ document.getElementById("nf_birdtype").value=client.birdType; populateBreedSelect(); updateProdVisibility(); }
     if(!document.getElementById("nf_placement").value && age!=null){
       const implied=new Date(new Date(date).getTime()-(age-1)*864e5).toISOString().slice(0,10);
       document.getElementById("nf_placement").value=implied;
