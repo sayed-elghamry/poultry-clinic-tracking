@@ -904,6 +904,7 @@ const LESIONS = [
   ["lv_target","lv","بؤر نخر دائرية شبه الهدف","Target-like circular necrosis"],
   ["lv_perihep","lv","غشاء فيبريني (perihepatitis)","Fibrin / perihepatitis"],
   ["lv_hepatitis","lv","التهاب كبد","Hepatitis"],
+  ["lv_friable_yellow","lv","كبد هش متفتت مصفرّ (تنكسي)","Friable, yellowish, dystrophic liver"],
   ["lv_fatty","lv","كبد دهني","Fatty liver"],
   ["lv_hemorrhage","lv","نزف كبدي","Hemorrhage"],
   ["lv_tumors","lv","أورام / عقيدات ورمية","Tumors"],
@@ -1191,7 +1192,7 @@ const DISEASES = [
    w:{pv_ductal_metaplasia:3,pv_enlarged:2,pv_thickened:2,pv_necrosis:1,bu_enlarged:1,bu_atrophied:1,cn_wasting:1}},
   {id:"ibh",ar:"التهاب الكبد الاندماجي / استسقاء التامور / تآكل القونصة",en:"Inclusion Body Hepatitis / HHS / Gizzard Erosion (Adenovirus)",cls:"فيروسي",aMin:14,aMax:45,
    test:"PCR (FAdV) وتحديد النمط المصلي + histo (أجسام اندماج داخل نووية بالكبد)",
-   w:{ht_hydropericardium:3,lv_hepatitis:2,lv_necrotic_foci:2,cn_ascites:2,cc_icteric:2,gz_erosion:3,lv_hemorrhage:1,cc_anemic:1,bm_hemorrhage:1,tm_hemorrhage:1,pn_necrosis:1}},
+   w:{ht_hydropericardium:3,lv_friable_yellow:3,gz_erosion:3,lv_hepatitis:2,lv_necrotic_foci:2,cn_ascites:2,cc_icteric:2,lv_hemorrhage:1,lv_hepatomegaly:1,cc_anemic:1,bm_hemorrhage:1,tm_hemorrhage:1,pn_necrosis:1}},
 
   {id:"coc",ar:"الكوكسيديا",en:"Coccidiosis",cls:"طفيلي",aMin:14,aMax:56,
    test:"كشط البطانة وفحص الأوسيست + تحديد النوع بالموقع: إثني عشر (لويحات بيضاء)=acervulina · وسط الأمعاء (مخاط برتقالي)=maxima · وسط الأمعاء (نزف شديد+بؤر بيضاء)=necatrix · الأعورين (دم/سدادات)=tenella · الأمعاء السفلى والمستقيم (نخر تجلطي)=brunetti",
@@ -2277,7 +2278,7 @@ function renderClientDetail(id){
             ${v.complaint?' · '+v.complaint:''}</div>
           ${top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:''}
           ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed}</b></div>`:''}
-          ${meds.length?`<div class="small">💊 ${meds.map(m=>`${formatMedShort(m)}${m.response?' ['+(RESP_LABEL[m.response]||m.response)+']':''}`).join('، ')}</div>`:''}
+          ${meds.length?`<div class="small">💊 ${meds.map(m=>`${formatMedShort(m, v.waterEstimateL)}${m.response?' ['+(RESP_LABEL[m.response]||m.response)+']':''}`).join('، ')}</div>`:''}
           ${formatFarmInspection(v.farmInspection)?`<div class="small">🌡️ ${formatFarmInspection(v.farmInspection)}</div>`:''}
           ${v.opinion?`<div class="small">📝 ${v.opinion}</div>`:''}
           ${v.prescriptionUrl?`<div class="small">📎 <a href="${v.prescriptionUrl}" target="_blank">صورة الروشتة/التحاليل</a></div>`:''}
@@ -2512,12 +2513,17 @@ function confirmedDxLabels(v){
   return "";
 }
 /* عرض مختصر لدواء واحد (اسم + جرعة + عبوة + المرض المرتبط لو موجود) — مستخدم في كارت الزيارة والإكسيل وبانر متابعة الاستجابة */
-function formatMedShort(m){
+function formatMedShort(m, waterEstimateL){
   const diseaseLabel=m.diseaseCustom||(m.diseaseId?dxName(m.diseaseId):"");
   let s=m.drug;
   const dose=formatMedDose(m);
   if(dose) s+=' — '+dose;
-  if(m.pack) s+=' (عبوة: '+m.pack+')';
+  if(m.pack){
+    s+=' (عبوة: '+m.pack;
+    const calc=computeMedicationNeed(m, waterEstimateL);
+    if(calc.ok) s+=' ← يحتاج '+calc.packagesNeeded+' عبوة';
+    s+=')';
+  }
   if(diseaseLabel) s+=' — '+diseaseLabel;
   return s;
 }
