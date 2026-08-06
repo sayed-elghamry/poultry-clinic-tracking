@@ -214,6 +214,10 @@
       <div id="dashAlerts"></div>
     </div>
     <div class="card">
+      <h2>🔔 مواعيد المتابعة القادمة</h2>
+      <div id="dashFollowups"></div>
+    </div>
+    <div class="card">
       <h2>🕘 آخر الزيارات المسجَّلة</h2>
       <div id="dashRecent"></div>
     </div>
@@ -529,10 +533,20 @@
       </div>
 
       <hr class="divider">
+      <h3>🔔 ميعاد المتابعة القادم (اختياري)</h3>
+      <div class="grid3">
+        <div class="field"><label>تاريخ الزيارة/المتابعة القادمة</label><input id="v_nextVisitDate" type="date"></div>
+        <div class="field"><label>نوع الزيارة</label>
+          <select id="v_nextVisitType"><option value="farm">زيارة مزرعة</option><option value="lab">زيارة معمل</option><option value="call">متابعة تليفونية</option></select></div>
+        <div class="field"><label>ملاحظة (تظهر في التذكير)</label><input id="v_nextVisitNote" placeholder="مثال: متابعة استجابة العلاج"></div>
+      </div>
+
+      <hr class="divider">
       <div class="row">
         <button class="btn pri" id="btnSaveVisit" onclick="saveVisit()">حفظ الزيارة/المتابعة</button>
         <span id="saveMsg" class="hint"></span>
       </div>
+      <div id="nextVisitReminderRow" class="row" style="display:none;margin-top:6px"></div>
     </div>
   </div>
 
@@ -1849,9 +1863,27 @@ async function buildPrescriptionCanvas(override){
   return canvas;
 }
 /* تجميع الأدوية حسب أيام الإعطاء المتطابقة — بيحافظ على ترتيب ظهور كل مجموعة أيام لأول مرة، زي ما بيكتبها الطبيب في الروشتة الورقية */
+function collapseCombos(meds){
+  const out=[]; const seen={};
+  meds.forEach(m=>{
+    if(m.comboType && m.comboGroup){
+      const key=m.comboType+"|"+m.comboGroup;
+      if(!(key in seen)){
+        seen[key]=out.length;
+        out.push({__combo:true, comboType:m.comboType, comboNote:m.comboNote||"", drugs:[m], days:m.days});
+      }else{
+        out[seen[key]].drugs.push(m);
+        if(!out[seen[key]].comboNote && m.comboNote) out[seen[key]].comboNote=m.comboNote;
+      }
+    }else{
+      out.push(m);
+    }
+  });
+  return out;
+}
 function groupMedsByDays(meds){
   const groups=[]; const index={};
-  meds.forEach(m=>{
+  collapseCombos(meds).forEach(m=>{
     const key=(m.days&&m.days.length)?[...m.days].sort((a,b)=>a-b).join(","):"";
     if(!(key in index)){
       index[key]=groups.length;
@@ -1863,6 +1895,14 @@ function groupMedsByDays(meds){
   return groups;
 }
 function formatMedLine(m){
+  if(m.__combo){
+    const names=m.drugs.map(d=>d.drug).filter(Boolean).join(' + ');
+    const icon=m.comboType==='injection'?'💉':'💧';
+    const verb=m.comboType==='injection'?'تُحل وتُعطى معًا':'تُعطى معًا في نفس السقاية';
+    let s=`• ${icon} ${names} — ${verb}`;
+    if(m.comboNote) s+=`: ${m.comboNote}`;
+    return s;
+  }
   let parts=[`• ${m.drug}`];
   const dose=formatMedDose(m);
   if(dose) parts.push(dose);
@@ -1975,6 +2015,14 @@ function startListeners(){
     buildDrugIndex();
     buildVaccIndex();
   });
+  fs.collection("packCatalog").onSnapshot(snap=>{
+    const idx={};
+    snap.docs.forEach(d=>{
+      const data=d.data(); const key=(data.name||"").trim().toLowerCase();
+      if(key) idx[key]={id:d.id, name:data.name, pack:data.pack};
+    });
+    PACK_CATALOG=idx;
+  });
 }
 
 /* ---------------------- تبويبات ---------------------- */
@@ -1985,6 +2033,32 @@ function showTab(name){
   document.getElementById(map[name]).classList.add("active");
   if(name==="openflocks") renderOpenFlocks();
   if(name==="dashboard") renderDashboard();
+}
+/* ---------------------- تذكير التقويم لميعاد المتابعة (.ics قابل للإضافة لأي تقويم على الموبايل/الكمبيوتر) ---------------------- */
+function downloadVisitReminderICS(dateStr, title, note){
+  if(!dateStr) return;
+  const dt=dateStr.replace(/-/g,""); // YYYYMMDD (حدث طوال اليوم)
+  const uid=`reminder-${dateStr}-${Math.random().toString(36).slice(2)}@poultry-clinic`;
+  const stamp=new Date().toISOString().replace(/[-:]/g,"").split(".")[0]+"Z";
+  const escapeICS=s=>(s||"").replace(/([,;])/g,"\\$1").replace(/\n/g,"\\n");
+  const ics=[
+    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//مركز د. السيد الغمري//تذكير متابعة//AR","CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${dt}`,
+    `DTEND;VALUE=DATE:${dt}`,
+    `SUMMARY:${escapeICS(title)}`,
+    note?`DESCRIPTION:${escapeICS(note)}`:"",
+    "BEGIN:VALARM","ACTION:DISPLAY",`DESCRIPTION:${escapeICS(title)}`,"TRIGGER:-PT9H","END:VALARM",
+    "END:VEVENT","END:VCALENDAR"
+  ].filter(Boolean).join("\r\n");
+  const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=`تذكير-${dateStr}.ics`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 3000);
 }
 function renderDashboard(){
   const host1=document.getElementById("dashStats"); if(!host1)return;
@@ -2009,6 +2083,25 @@ function renderDashboard(){
       <b>${a.client?a.client.name:'—'}</b> — ${a.f.houseName||'—'} (${a.f.flockCode}) — اليوم ${a.dayOfCycle}
       <div class="row"><button class="btn sm" onclick="openClientDetail('${a.f.clientId}')">فتح ملف العميل</button></div>
     </div>`).join("") : '<p class="hint">لا توجد تنبيهات حاليًا 👍</p>';
+
+  const followups=STATE.visits.filter(v=>v.nextVisitDate).map(v=>{
+    const client=STATE.clients.find(c=>c.id===v.clientId);
+    return {v, client, overdue: v.nextVisitDate<today};
+  }).sort((a,b)=>a.v.nextVisitDate.localeCompare(b.v.nextVisitDate));
+  const typeLabel={farm:"زيارة مزرعة",lab:"زيارة معمل",call:"متابعة تليفونية"};
+  const hostF=document.getElementById("dashFollowups");
+  if(hostF){
+    hostF.innerHTML=followups.length? followups.map(({v,client,overdue})=>{
+      const title=`${typeLabel[v.nextVisitType]||'متابعة'} — ${client?client.name:'عميل'}`;
+      return `<div class="flockitem">${overdue?'<span class="chip warn">متأخّر</span> ':''}
+        <b>${v.nextVisitDate}</b> — ${client?client.name:'—'} — ${typeLabel[v.nextVisitType]||'متابعة'}${v.nextVisitNote?' — '+v.nextVisitNote:''}
+        <div class="row">
+          <button class="btn sm" onclick="openClientDetail('${v.clientId}')">فتح ملف العميل</button>
+          <button class="btn sm" onclick='downloadVisitReminderICS(${JSON.stringify(v.nextVisitDate)}, ${JSON.stringify(title)}, ${JSON.stringify(v.nextVisitNote||"")})'>📅 تذكير للتقويم</button>
+        </div>
+      </div>`;
+    }).join("") : '<p class="hint">لا توجد مواعيد متابعة مسجَّلة حاليًا.</p>';
+  }
 
   const recent=STATE.visits.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
   const hostR=document.getElementById("dashRecent");
@@ -2167,7 +2260,7 @@ function renderClientDetail(id){
         <span class="chip ${f.status==='open'?'open':'closed'}">${f.status==='open'?'مفتوح':'مغلق'}</span></div>
       <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · ${cycleTxt} · عدد ابتدائي: ${f.birdCountInitial||'—'}</div>
       <div class="row" style="margin-top:6px">
-        ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:''}
+        ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:`<button class="btn sm pri" onclick="generateCycleReportPDF('${f.id}')">📄 تقرير الدورة الشامل</button>`}
         <button class="btn sm" onclick="startEditFlock('${f.id}')">✏️ تعديل الدورة</button>
         <button class="btn sm danger" onclick="deleteFlock('${f.id}')">🗑 حذف الدورة</button>
         <button class="btn sm" onclick="exportFlockExcel('${f.id}')">📊 تصدير Excel</button>
@@ -2178,7 +2271,7 @@ function renderClientDetail(id){
         const top=dx&&dx.topDiagnoses&&dx.topDiagnoses[0];
         const confirmed=confirmedDxLabels(v);
         const meds=v.medications||[];
-        const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
+        const RESP_LABEL=RESP_LABEL_FULL;
         return `<div class="visititem">
           <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':'<span class="chip closed">مزرعة</span>'}${(v.sampleAlive||v.sampleDead)?` <span class="chip visit">🧪 عينة ${((v.sampleAlive||0)+(v.sampleDead||0))}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}</span>`:''} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
             ${v.complaint?' · '+v.complaint:''}</div>
@@ -2236,8 +2329,175 @@ async function deleteVisit(id){
 }
 async function closeFlock(flockId){
   if(!confirm("تأكيد إغلاق/تسويق هذه الدورة؟ أي زيارة جديدة لنفس الموقع ستُنشئ دورة جديدة."))return;
-  try{ await fs.collection("flocks").doc(flockId).update({status:"closed",closedAt:new Date().toISOString()}); }
+  const feedStr=prompt("لحساب الـ FCR الحقيقي وبناء تقرير الدورة — اكتب إجمالي العلف المستهلك طوال الدورة بالكيلوجرام.\nاتركه فاضي لو عايز تتخطى حساب الـ FCR (التقرير هيتبني من غيره).");
+  const actualTotalFeedKg=feedStr?parseFloat(feedStr):null;
+  let actualAvgWeightG=null;
+  if(actualTotalFeedKg){
+    const weightStr=prompt("متوسط وزن الطائر عند التسويق (بالجرام):");
+    actualAvgWeightG=weightStr?parseFloat(weightStr):null;
+  }
+  try{
+    await fs.collection("flocks").doc(flockId).update({
+      status:"closed", closedAt:new Date().toISOString(),
+      actualTotalFeedKg: (actualTotalFeedKg&&!isNaN(actualTotalFeedKg))?actualTotalFeedKg:null,
+      actualAvgWeightG: (actualAvgWeightG&&!isNaN(actualAvgWeightG))?actualAvgWeightG:null
+    });
+    setTimeout(()=>generateCycleReportPDF(flockId, {actualTotalFeedKg, actualAvgWeightG, closedAt:new Date().toISOString()}), 600);
+  }
   catch(e){ alert("⚠ تعذّر إغلاق الدورة: "+(e.message||e)); }
+}
+/* ==================================================================================
+   تقرير الدورة الشامل عند الإغلاق — سرد زمني + ملخص المشاكل الصحية + FCR
+   تقرير "ذكي" مبني آليًا من بيانات الزيارات نفسها (بدون استدعاء AI خارجي)
+   ================================================================================== */
+async function generateCycleReportPDF(flockId, override){
+  const flock=STATE.flocks.find(f=>f.id===flockId); if(!flock){ alert("الدورة غير موجودة."); return; }
+  const client=STATE.clients.find(c=>c.id===flock.clientId);
+  const visits=STATE.visits.filter(v=>v.flockId===flockId).sort((a,b)=>(a.ageDays??0)-(b.ageDays??0)||new Date(a.date)-new Date(b.date));
+  const actualTotalFeedKg=(override&&override.actualTotalFeedKg!=null)?override.actualTotalFeedKg:flock.actualTotalFeedKg;
+  const actualAvgWeightG=(override&&override.actualAvgWeightG!=null)?override.actualAvgWeightG:flock.actualAvgWeightG;
+  const closedAt=(override&&override.closedAt)?override.closedAt:(flock.closedAt||new Date().toISOString());
+  const cycleDays=daysBetween(flock.placementDate, closedAt.slice(0,10))+1;
+
+  let totalMortality=0;
+  visits.forEach(v=>(v.mortalityLog||[]).forEach(m=>{totalMortality+=(parseInt(m.dead)||0);}));
+  let mortalityPct=null;
+  if(totalMortality && flock.birdCountInitial){ mortalityPct=(totalMortality/flock.birdCountInitial*100); }
+  else {
+    const lastWithCum=visits.slice().reverse().find(v=>v.mortalityCum);
+    if(lastWithCum) mortalityPct=parseFloat(lastWithCum.mortalityCum);
+  }
+  const finalLiveCount=flock.birdCountInitial ? (totalMortality ? (flock.birdCountInitial-totalMortality) : (mortalityPct!=null ? Math.round(flock.birdCountInitial*(1-mortalityPct/100)) : flock.birdCountInitial)) : null;
+
+  let fcrActual=null;
+  if(actualTotalFeedKg && actualAvgWeightG && finalLiveCount){
+    const totalWeightKg=(finalLiveCount*actualAvgWeightG)/1000;
+    fcrActual=totalWeightKg>0?(actualTotalFeedKg/totalWeightKg):null;
+  }
+  let fcrRefText=null;
+  const breed=BREEDS[flock.breed];
+  if(breed){
+    const ages=Object.keys(breed.fcr).map(Number).sort((a,b)=>a-b);
+    const nearestAge=ages.reduce((p,c)=>Math.abs(c-cycleDays)<Math.abs(p-cycleDays)?c:p, ages[0]);
+    fcrRefText=`مرجعي ${breed.name} عند عمر ${nearestAge} يوم: FCR ≈ ${breed.fcr[nearestAge]} — وزن مستهدف ≈ ${breed.w[nearestAge]} جم`;
+  }
+
+  const RESP_LABEL=RESP_LABEL_FULL;
+  const visitLines=visits.map(v=>{
+    const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
+    const confirmed=confirmedDxLabels(v);
+    const meds=v.medications||[];
+    let s=`عمر ${v.ageDays??'—'} يوم (${v.date}) — `;
+    s+=v.complaint?v.complaint:"زيارة متابعة روتينية";
+    if(top) s+=` — الاشتباه المبدئي: ${top.ar} (ترجيح ${top.score})`;
+    if(confirmed) s+=` — التشخيص المؤكَّد: ${confirmed}`;
+    if(meds.length) s+=` — العلاج: ${meds.map(m=>formatMedShort(m)).join('، ')}`;
+    const responses=meds.filter(m=>m.response).map(m=>RESP_LABEL[m.response]||m.response);
+    if(responses.length) s+=` — استجابة العلاج السابق: ${responses.join('، ')}`;
+    return s;
+  });
+
+  const groups={};
+  const lastAgeInCycle=visits.length?visits[visits.length-1].ageDays:null;
+  visits.forEach(v=>{
+    const confirmed=confirmedDxLabels(v);
+    const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
+    const label=confirmed||(top&&top.score>=40?top.ar:null);
+    if(!label) return;
+    if(!groups[label]) groups[label]={label, firstAge:v.ageDays, lastAge:v.ageDays, confirmed:!!confirmed, lastResponse:null};
+    if(v.ageDays!=null){
+      if(groups[label].firstAge==null||v.ageDays<groups[label].firstAge) groups[label].firstAge=v.ageDays;
+      if(groups[label].lastAge==null||v.ageDays>groups[label].lastAge) groups[label].lastAge=v.ageDays;
+    }
+    (v.medications||[]).forEach(m=>{ if(m.response) groups[label].lastResponse=m.response; });
+  });
+  const episodeLines=Object.values(groups).map(g=>{
+    const ageRange=(g.firstAge===g.lastAge)?`عمر ${g.firstAge??'—'} يوم`:`من عمر ${g.firstAge??'—'} إلى ${g.lastAge??'—'} يوم`;
+    let outcome;
+    if(g.lastResponse==='excellent') outcome="✅ تم حل المشكلة بنجاح";
+    else if(g.lastResponse==='partial') outcome="🟡 استجابة جزئية — تحسّن غير كامل";
+    else if(g.lastResponse==='weak'||g.lastResponse==='failed') outcome="🔴 استجابة ضعيفة/فشل — المشكلة لم تُحل بالكامل";
+    else outcome=(g.lastAge===lastAgeInCycle)?"⚪ لم تُسجَّل استجابة نهائية — استمرت حتى نهاية الدورة":"⚪ لم تُسجَّل استجابة للعلاج";
+    return `${g.label} (${g.confirmed?'مؤكَّد':'اشتباه'}) — ${ageRange} — ${outcome}`;
+  });
+
+  try{
+    const logo=new Image(); logo.src=LOGO_B64;
+    let logoOk=true;
+    await Promise.race([
+      new Promise((res)=>{logo.onload=res; logo.onerror=()=>{logoOk=false; res();};}),
+      new Promise((res)=>setTimeout(()=>{logoOk=false; res();}, 4000))
+    ]);
+    const scale=2.4;
+    const W=Math.round(210*scale*3.7795), H=Math.round(297*scale*3.7795);
+    const pages=[]; let canvas, ctx, y;
+    function newPage(){
+      canvas=document.createElement("canvas"); canvas.width=W; canvas.height=H;
+      ctx=canvas.getContext("2d");
+      ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+      const logoSize=W*0.11, logoX=(W-logoSize)/2, logoY=H*0.025;
+      if(logoOk){ try{ ctx.drawImage(logo, logoX, logoY, logoSize, logoSize); }catch(e){} }
+      ctx.direction="rtl"; ctx.textAlign="center"; ctx.fillStyle="#1c6b45";
+      ctx.font=`bold ${Math.round(20*scale)}px Tahoma, Arial`;
+      ctx.fillText("تقرير الدورة الشامل", W/2, logoY+(logoOk?logoSize:0)+Math.round(30*scale));
+      y=logoY+(logoOk?logoSize:0)+Math.round(55*scale);
+      ctx.strokeStyle="#DADADA"; ctx.beginPath(); ctx.moveTo(W*0.07,y); ctx.lineTo(W*0.93,y); ctx.stroke();
+      y+=Math.round(20*scale);
+      ctx.direction="rtl"; ctx.textAlign="right"; ctx.fillStyle="#1a1a1a";
+    }
+    function finalizePage(){ pages.push(canvas.toDataURL("image/jpeg",0.95)); }
+    const bottomLimit=H*0.94;
+    function ensureSpace(need){ if(y+need>bottomLimit){ finalizePage(); newPage(); } }
+    function line(text,{size=15,bold=false,gap=6,color="#1a1a1a",maxWidthFrac=0.86}={}){
+      ctx.font=`${bold?"bold ":""}${Math.round(size*scale)}px Tahoma, Arial`;
+      ctx.fillStyle=color;
+      const lh=Math.round((size+7)*scale);
+      const words=(text||"").split(/\s+/).filter(Boolean);
+      let ln=""; const maxW=W*maxWidthFrac; const chunks=[];
+      words.forEach(w=>{ const test=ln?ln+" "+w:w; if(ctx.measureText(test).width>maxW && ln){ chunks.push(ln); ln=w; } else ln=test; });
+      if(ln)chunks.push(ln);
+      chunks.forEach(c=>{ ensureSpace(lh); ctx.fillText(c, W*0.93, y); y+=lh; });
+      y+=Math.round(gap*scale);
+    }
+    function divider(){ ensureSpace(14*scale); ctx.strokeStyle="#E5E5E5"; ctx.beginPath(); ctx.moveTo(W*0.07,y); ctx.lineTo(W*0.93,y); ctx.stroke(); y+=Math.round(16*scale); }
+
+    newPage();
+    line(`${flock.houseName||flock.flockCode} — ${client?client.name:'—'}`, {size:22, bold:true, gap:4});
+    line(`${BIRD_LABEL[flock.birdType]||flock.birdType}${breed?' ('+breed.name+')':''} — تحميل ${flock.placementDate} — إغلاق ${closedAt.slice(0,10)} — مدة الدورة ${cycleDays} يوم`, {size:14, gap:14, color:"#555"});
+    divider();
+
+    line("📊 ملخص الأداء", {size:18, bold:true, gap:6});
+    line(`عدد الطيور الابتدائي: ${flock.birdCountInitial??'—'}   ·   إجمالي النفوق: ${totalMortality||'—'}${mortalityPct!=null?' ('+mortalityPct.toFixed(1)+'%)':''}   ·   العدد النهائي التقديري: ${finalLiveCount??'—'}`, {size:14, gap:6});
+    if(fcrActual!=null){
+      line(`✅ FCR الفعلي: ${fcrActual.toFixed(2)}  (إجمالي علف ${actualTotalFeedKg} كجم ÷ إجمالي وزن حي ${((finalLiveCount*actualAvgWeightG)/1000).toFixed(0)} كجم)`, {size:15, gap:4, color:"#1c6b45", bold:true});
+    } else {
+      line("⚠ لم يتم إدخال بيانات كافية (إجمالي العلف/متوسط الوزن) لحساب FCR فعلي لهذه الدورة.", {size:13, gap:4, color:"#b00000"});
+    }
+    if(fcrRefText) line(`📎 ${fcrRefText}`, {size:13, gap:10, color:"#555"});
+    divider();
+
+    line("🩺 ملخص المشاكل الصحية خلال الدورة", {size:18, bold:true, gap:6});
+    if(episodeLines.length){
+      episodeLines.forEach(l=>line("• "+l, {size:14, gap:6}));
+    } else {
+      line("لم تُسجَّل مشاكل صحية ذات دلالة تشخيصية خلال هذه الدورة.", {size:14, gap:6, color:"#555"});
+    }
+    divider();
+
+    line("📅 السرد الزمني الكامل للزيارات", {size:18, bold:true, gap:8});
+    if(visitLines.length){
+      visitLines.forEach(l=>{ line(l, {size:13.5, gap:9}); });
+    } else {
+      line("لا توجد زيارات مسجَّلة لهذه الدورة.", {size:14, gap:6, color:"#555"});
+    }
+
+    finalizePage();
+    const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
+    pages.forEach((dataUrl,i)=>{ if(i>0)pdf.addPage(); pdf.addImage(dataUrl,"JPEG",0,0,210,297); });
+    pdf.save(`تقرير-دورة-${flock.houseName||flock.flockCode}-${closedAt.slice(0,10)}.pdf`);
+  }catch(e){
+    alert("⚠ تعذّر توليد تقرير الدورة: "+(e.message||e));
+  }
 }
 function printClientDetail(){
   if(!currentClientDetailId){ alert("افتح ملف العميل أولاً من تبويب «العملاء» قبل الطباعة."); return; }
@@ -2277,7 +2537,7 @@ function formatFarmInspection(fi){
 }
 function exportVisitsToExcel(visits, label){
   if(!visits.length){alert("لا توجد زيارات لتصديرها.");return;}
-  const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
+  const RESP_LABEL=RESP_LABEL_FULL;
   const rows=visits.map(v=>{
     const flock=STATE.flocks.find(f=>f.id===v.flockId);
     const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
@@ -2616,7 +2876,7 @@ function exportClientExcel(){
 /* تصدير إحصائي شامل لكل الحالات المسجّلة في العيادة: كل الزيارات + تكرار الأمراض + فعالية الأدوية + منحنى النفوق حسب العمر */
 function exportAllStatsExcel(){
   if(!STATE.visits.length){alert("لا توجد زيارات مسجّلة بعد.");return;}
-  const RESP_LABEL={excellent:"ممتازة",partial:"جزئية",weak:"ضعيفة",failed:"فشل"};
+  const RESP_LABEL=RESP_LABEL_FULL;
   const wb=XLSX.utils.book_new();
 
   // 1) كل الزيارات (كل العملاء)
@@ -2664,15 +2924,15 @@ function exportAllStatsExcel(){
     if(!m.response||!m.drug)return;
     const effDisease=m.diseaseId||v.confirmedDiagnosisId||"";
     const key=(m.drug||"").trim().toLowerCase()+"|"+effDisease;
-    drugMap[key]=drugMap[key]||{drug:m.drug,diseaseId:effDisease,excellent:0,partial:0,weak:0,failed:0};
+    drugMap[key]=drugMap[key]||{drug:m.drug,diseaseId:effDisease,excellent:0,good:0,partial:0,weak:0,failed:0};
     drugMap[key][m.response]=(drugMap[key][m.response]||0)+1;
   }));
   const drugRows=Object.values(drugMap).map(d=>{
-    const total=d.excellent+d.partial+d.weak+d.failed;
+    const total=d.excellent+d.good+d.partial+d.weak+d.failed;
     return {
       "الدواء":d.drug, "المرض المرتبط":d.diseaseId?dxName(d.diseaseId):"—",
-      "عدد الحالات":total, "ممتازة":d.excellent, "جزئية":d.partial, "ضعيفة":d.weak, "فشل":d.failed,
-      "نسبة النجاح %":total?Math.round(((d.excellent+d.partial)/total)*100):""
+      "عدد الحالات":total, "ممتازة":d.excellent, "جيدة":d.good, "جزئية":d.partial, "ضعيفة":d.weak, "فشل":d.failed,
+      "نسبة النجاح %":total?Math.round(((d.excellent+d.good+d.partial)/total)*100):""
     };
   }).sort((a,b)=>b["عدد الحالات"]-a["عدد الحالات"]);
   if(drugRows.length){
@@ -2917,25 +3177,29 @@ function checkFlockMatch(){
 function renderPendingMedResponses(flockId){
   const host=document.getElementById("pendingMedResponses");
   if(editingVisitId){ host.innerHTML=""; return; }
-  const flockVisits=STATE.visits.filter(v=>v.flockId===flockId && (v.medications||[]).some(m=>!m.response))
+  const flockVisits=STATE.visits.filter(v=>v.flockId===flockId && (v.medications||[]).some(m=>!m.response || !m.responseConfirmed))
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const prevVisit=flockVisits[0];
   if(!prevVisit){ host.innerHTML=""; return; }
-  const pending=(prevVisit.medications||[]).filter(m=>!m.response);
+  const meds=prevVisit.medications||[];
+  const pending=meds.map((m,idx)=>({m,idx})).filter(({m})=>!m.response || !m.responseConfirmed);
   if(!pending.length){ host.innerHTML=""; return; }
   window.__pendingMedVisitId=prevVisit.id;
   host.innerHTML=`<div class="banner warn">
     <b>💊 تقييم استجابة العلاج الموصوف في زيارة ${prevVisit.date}:</b>
-    ${pending.map((m,i)=>`<div class="row" style="margin-top:6px">
-      <span class="small">${formatMedShort(m)}</span>
-      <select id="medresp_${i}" data-idx="${i}">
-        <option value="">لم يُقيَّم بعد</option>
-        <option value="excellent">استجابة ممتازة</option>
-        <option value="partial">استجابة جزئية</option>
-        <option value="weak">استجابة ضعيفة</option>
-        <option value="failed">فشل العلاج</option>
+    ${pending.map(({m,idx})=>`<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">
+      <span class="small">${formatMedShort(m)}${m.response?' — آخر تقييم: '+(RESP_LABEL_FULL[m.response]||m.response)+(m.responseConfirmed?' (مؤكَّد ميدانيًا)':' (تليفوني/مبدئي — محتاج تأكيد)'):''}</span>
+      <select id="medresp_${idx}" data-arridx="${idx}">
+        <option value="">${m.response?'بدون تغيير':'لم يُقيَّم بعد'}</option>
+        <option value="excellent"${m.response==='excellent'?' selected':''}>استجابة ممتازة</option>
+        <option value="good"${m.response==='good'?' selected':''}>استجابة جيدة</option>
+        <option value="partial"${m.response==='partial'?' selected':''}>استجابة جزئية</option>
+        <option value="weak"${m.response==='weak'?' selected':''}>استجابة ضعيفة</option>
+        <option value="failed"${m.response==='failed'?' selected':''}>فشل العلاج</option>
       </select>
+      <label class="small"><input type="checkbox" id="medconf_${idx}"${m.responseConfirmed?' checked':''}> ✅ تأكيد ميداني (زيارة فعلية، مش تليفون)</label>
     </div>`).join("")}
+    <div class="small" style="color:#777;margin-top:6px">أي تقييم من غير ما تحدد "تأكيد ميداني" هيفضل يظهرلك هنا في كل زيارة جديدة لحد ما تتأكد منه بزيارة فعلية.</div>
   </div>`;
 }
 
@@ -2953,6 +3217,8 @@ const MED_PURPOSES=[
   ["other","أخرى"]
 ];
 let DRUG_INDEX={}; // { "اسم الدواء بحروف صغيرة": {name, dose, pack, purpose, count, lastDate} }
+const RESP_LABEL_FULL={excellent:"ممتازة",good:"جيدة",partial:"جزئية",weak:"ضعيفة",failed:"فشل العلاج"};
+let PACK_CATALOG={}; // { "اسم الدواء بحروف صغيرة": {id, name, pack} } — عبوة ثابتة لكل صنف، محفوظة يدويًا مرة واحدة
 /* ---------------------- مرجعية جاهزة (بذور) للأدوية — من روشتات حقيقية بعتها د. السيد ---------------------- */
 const DRUG_CATALOG_SEED=[
   // {name:"...", dose:"...", pack:"...", purpose:"antibiotic"},
@@ -2984,12 +3250,37 @@ function onMedDrugInput(rowId){
   const row=document.getElementById(rowId); if(!row)return;
   const drugEl=row.querySelector(".m_drug");
   const key=drugEl.value.trim().toLowerCase();
-  const hit=DRUG_INDEX[key];
-  if(hit){
-    const doseEl=row.querySelector(".m_dose"), packEl=row.querySelector(".m_pack"), purpEl=row.querySelector(".m_purpose");
-    if(doseEl && !doseEl.value.trim()) doseEl.value=hit.dose;
-    if(packEl && !packEl.value.trim()) packEl.value=hit.pack;
-    if(purpEl && !purpEl.value && hit.purpose) purpEl.value=hit.purpose;
+  const packEl=row.querySelector(".m_pack"), purpEl=row.querySelector(".m_purpose"), noteEl=row.querySelector(".m_packNote");
+  const catalogHit=PACK_CATALOG[key];
+  if(catalogHit){
+    if(packEl && !packEl.value.trim()) packEl.value=catalogHit.pack;
+    if(noteEl) noteEl.textContent="✅ العبوة من الكتالوج الثابت";
+  } else {
+    if(noteEl) noteEl.textContent="";
+    // ملحوظة: الجرعة بتختلف حسب الحالة، فمش بتتملأ تلقائيًا — العبوة بس هي اللي بتتملأ من الكتالوج الثابت.
+    // لو الصنف ده لسه معملوش له كتالوج، ممكن نعرض عبوة آخر زيارة كاقتراح بس (من غير ما نفرضها)
+    const hit=DRUG_INDEX[key];
+    if(hit && packEl && !packEl.value.trim() && hit.pack){ packEl.placeholder=`آخر عبوة استُخدمت: ${hit.pack} — اضغط 💾 لتثبيتها`; }
+    if(purpEl && !purpEl.value && hit && hit.purpose) purpEl.value=hit.purpose;
+  }
+}
+async function savePackToCatalog(rowId){
+  const row=document.getElementById(rowId); if(!row)return;
+  const drugEl=row.querySelector(".m_drug"), packEl=row.querySelector(".m_pack"), noteEl=row.querySelector(".m_packNote");
+  const name=drugEl.value.trim(), pack=packEl.value.trim();
+  if(!name){ alert("اكتب اسم الدواء الأول."); return; }
+  if(!pack){ alert("اكتب حجم العبوة الأول."); return; }
+  const key=name.toLowerCase();
+  try{
+    const existing=PACK_CATALOG[key];
+    if(existing){
+      await fs.collection("packCatalog").doc(existing.id).update({name, pack});
+    } else {
+      await fs.collection("packCatalog").add({name, pack, createdAt:new Date().toISOString()});
+    }
+    if(noteEl) noteEl.textContent="✅ اتحفظت العبوة كثابتة لهذا الصنف";
+  }catch(e){
+    alert("⚠ تعذّر حفظ العبوة: "+(e.message||e));
   }
 }
 /* ==================================================================================
@@ -3010,14 +3301,14 @@ const UNIT_TO_BASE={ "سم":1,"مل":1,"لتر":1000, "جم":1,"جرام":1,"ك�
 const UNIT_RE="(سم3|سم|مل|جم|جرام|كجم|كيلو|لتر)";
 function normUnit(u){ return u==="سم3"?"سم":u; }
 function parseLeadingAmount(text){
-  let t=text.trim(), wordMul=null;
+  let t=text.trim(), consumed=0, wordMul=null;
   const wm=t.match(/^(نص|ربع)\s*/);
-  if(wm){ wordMul=(wm[1]==="نص")?0.5:0.25; t=t.slice(wm[0].length); }
+  if(wm){ wordMul=(wm[1]==="نص")?0.5:0.25; consumed+=wm[0].length; t=t.slice(wm[0].length); }
   const m=t.match(new RegExp("^([\\d.,]+)\\s*"+UNIT_RE));
-  if(m) return {amount:(wordMul!=null?wordMul:parseFloat(m[1].replace(",","."))), unit:normUnit(m[2])};
+  if(m){ consumed+=m[0].length; return {amount:(wordMul!=null?wordMul:parseFloat(m[1].replace(",","."))), unit:normUnit(m[2]), consumed}; }
   if(wordMul!=null){
     const m2=t.match(new RegExp("^"+UNIT_RE));
-    if(m2) return {amount:wordMul, unit:normUnit(m2[1])};
+    if(m2){ consumed+=m2[0].length; return {amount:wordMul, unit:normUnit(m2[1]), consumed}; }
   }
   return null;
 }
@@ -3035,10 +3326,15 @@ function parseDoseForConsumption(doseRaw){
   const raw=(doseRaw||"").trim();
   if(!raw) return {ok:false, reason:"لا يوجد نص جرعة مسجَّل", raw};
   const text=normalizeDoseDigits(raw);
-  const lead=parseLeadingAmount(text);
+  const trimmedText=text.trim();
+  const lead=parseLeadingAmount(trimmedText);
   if(!lead) return {ok:false, reason:"تعذّر التعرّف على رقم/وحدة الجرعة في بداية النص", raw};
+  // هل الجرعة مكتوبة كـ"تركيز لكل لتر مياه" من غير رقم مياه محدد؟ (زي "0.5 جم/لتر" أو "0.5 جم/لتر المياه")
+  // ده مختلف عن "500 جم/1000 لتر" اللي فيها رقم مياه محدد (بيتجاهل حسب الاتفاق السابق)
+  const remainder=trimmedText.slice(lead.consumed);
+  const perLiter=/^\s*(?:\/|لكل|في)\s*لتر(?!\s*\/?\s*\d)/.test(remainder) && !/^\s*(?:\/|لكل|في)\s*لتر\s*[\d.,]/.test(remainder);
   let N=null;
-  const mN=text.match(/(?:لمدة|\*|×|لـ)\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
+  const mN=text.match(/(?:لمدة|لمده|\*|×|لـ)\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
   if(mN) N=parseFloat(mN[1].replace(",","."));
   else if(/يومين/.test(text)) N=2;
   if(N==null) return {ok:false, reason:"تعذّر تحديد عدد أيام العلاج من النص", raw, dose:lead};
@@ -3057,9 +3353,17 @@ function parseDoseForConsumption(doseRaw){
     multiplier=2;
     pattern="twice";
   }
-  const totalBase=lead.amount*multiplier*effectiveDays*(UNIT_TO_BASE[lead.unit]||1);
   const family=UNIT_FAMILY[lead.unit]||null;
-  return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, effectiveDays, multiplier, pattern, intervalK, totalBase, family};
+  if(perLiter){
+    // نسبة ساعات السقاية من الـ24 ساعة (لو مذكورة) — تقريبية بقصد، لتفادي نقص جرعة الدواء عن الحاجة
+    let hoursFraction=1, hoursPerDay=null;
+    const mHours=text.match(/([\d.,]+)\s*ساع/);
+    if(mHours){ hoursPerDay=parseFloat(mHours[1].replace(",",".")); hoursFraction=Math.min(hoursPerDay/24, 1); }
+    // الكمية الإجمالية هتتحسب لاحقًا في computeMedicationNeed لما تبقى متاحة بيانات الماء المقدَّر للزيارة
+    return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, effectiveDays, multiplier, pattern, intervalK, family, perLiter:true, hoursPerDay, hoursFraction};
+  }
+  const totalBase=lead.amount*multiplier*effectiveDays*(UNIT_TO_BASE[lead.unit]||1);
+  return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, effectiveDays, multiplier, pattern, intervalK, totalBase, family, perLiter:false};
 }
 function parsePackForConsumption(packRaw){
   const raw=(packRaw||"").trim();
@@ -3071,14 +3375,25 @@ function parsePackForConsumption(packRaw){
   const family=UNIT_FAMILY[found.unit]||null;
   return {ok:true, raw, amount:found.amount, unit:found.unit, base, family};
 }
-function computeMedicationNeed(m){
+function computeMedicationNeed(m, dailyWaterEstimateL){
   const dose=parseDoseForConsumption(m.dose);
   if(!dose.ok) return {ok:false, reason:dose.reason, dose};
   const pack=parsePackForConsumption(m.pack);
   if(!pack.ok) return {ok:false, reason:"الجرعة مفهومة لكن "+pack.reason, dose, pack};
   if(dose.family!==pack.family) return {ok:false, reason:`وحدة الجرعة (${dose.unit}) ووحدة العبوة (${pack.unit}) من نوعين مختلفين (وزن/حجم) — محتاج مراجعة يدوية`, dose, pack};
-  const packagesNeeded=Math.ceil(dose.totalBase/pack.base);
-  return {ok:true, dose, pack, totalBase:dose.totalBase, packagesNeeded};
+  let totalBase, usedWaterEstimate=null;
+  if(dose.perLiter){
+    const w=parseFloat(dailyWaterEstimateL);
+    if(!w || isNaN(w) || w<=0){
+      return {ok:false, reason:"الجرعة مكتوبة كتركيز لكل لتر مياه، لكن «الماء المقدَّر» مش متسجَّل في هذه الزيارة (سجّل استهلاك العلف الفعلي عشان يتحسب تلقائي) — محتاج مراجعة يدوية", dose, pack};
+    }
+    usedWaterEstimate=w;
+    totalBase=dose.perDay*dose.multiplier*dose.effectiveDays*w*dose.hoursFraction*(UNIT_TO_BASE[dose.unit]||1);
+  } else {
+    totalBase=dose.totalBase;
+  }
+  const packagesNeeded=Math.ceil(totalBase/pack.base);
+  return {ok:true, dose, pack, totalBase, packagesNeeded, usedWaterEstimate};
 }
 const PATTERN_LABEL={daily:"يومية", interval:"دورية (كل عدة أيام)", intermittent:"متقطعة (يوم وأيوم)", twice:"مرتين يوميًا"};
 let LAST_CONSUMPTION_DATA=null; // للاستخدام في تصدير الـ PDF
@@ -3094,7 +3409,7 @@ function computeMonthlyConsumption(drugName, yearMonth){
     (v.medications||[]).forEach(m=>{
       if((m.drug||"").trim().toLowerCase()!==key) return;
       const client=STATE.clients.find(c=>c.id===v.clientId);
-      entries.push({date:v.date, clientName:client?client.name:"—", doseRaw:m.dose||"", packRaw:m.pack||"", calc:computeMedicationNeed(m)});
+      entries.push({date:v.date, clientName:client?client.name:"—", doseRaw:m.dose||"", packRaw:m.pack||"", calc:computeMedicationNeed(m, v.waterEstimateL)});
     });
   });
   entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -3125,7 +3440,7 @@ function runConsumptionReport(){
       if(totalFamily===c.dose.family) totalOkBase=(totalOkBase||0)+c.totalBase;
       return `<tr>
         <td>${e.date}</td><td>${e.clientName}</td><td>${e.doseRaw}</td><td>${e.packRaw||'—'}</td>
-        <td>${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}</td>
+        <td>${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}${c.dose.perLiter?` (تركيز/لتر — ${c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):''}ماء ${(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)} لتر/يوم)`:''}</td>
         <td>${baseAmountLabel(c.totalBase, c.dose.family)}</td>
         <td>${c.packagesNeeded} عبوة</td>
       </tr>`;
@@ -3214,7 +3529,7 @@ async function exportConsumptionReportPDF(){
       line(`${e.date} — ${e.clientName}`, {size:15, bold:true, gap:2});
       line(`الجرعة: ${e.doseRaw}${e.packRaw?' — العبوة: '+e.packRaw:''}`, {size:13, gap:2, color:"#555"});
       if(c.ok){
-        line(`✅ ${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern} — الكمية: ${baseAmountLabel(c.totalBase, c.dose.family)} — العبوات: ${c.packagesNeeded}`, {size:13, gap:8, color:"#1c6b45"});
+        line(`✅ ${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}${c.dose.perLiter?' (تركيز/لتر — '+(c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):'')+'ماء '+(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)+' لتر/يوم)':''} — الكمية: ${baseAmountLabel(c.totalBase, c.dose.family)} — العبوات: ${c.packagesNeeded}`, {size:13, gap:8, color:"#1c6b45"});
         const g=packGroups[e.packRaw]||(packGroups[e.packRaw]={base:0, family:c.dose.family});
         g.base+=c.totalBase;
       } else {
@@ -3388,7 +3703,13 @@ function addMedRow(){
     <div class="grid3">
       <div class="field"><label>اسم الدواء</label><input class="m_drug" list="drugSuggestions" oninput="onMedRowInput('${id}');onMedDrugInput('${id}')"></div>
       <div class="field"><label>الجرعة</label><input class="m_dose" placeholder="مثال: 1 جم/لتر ماء لمدة 4 أيام"></div>
-      <div class="field"><label>العبوة</label><input class="m_pack" placeholder="مثال: علبة 100 جم"></div>
+      <div class="field"><label>العبوة</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="m_pack" placeholder="مثال: علبة 100 جم" style="flex:1">
+          <button type="button" class="btn sm" title="احفظ حجم العبوة ده كثابت لهذا الصنف — هيتملأ تلقائيًا في كل مرة" onclick="savePackToCatalog('${id}')" style="flex:0 0 auto;padding:6px 10px">💾</button>
+        </div>
+        <div class="small m_packNote" style="color:#1c6b45"></div>
+      </div>
     </div>
     <div class="grid2" style="margin-top:6px">
       <div class="field">
@@ -3404,6 +3725,19 @@ function addMedRow(){
     <div class="row" style="margin-top:8px;justify-content:space-between">
       <div class="small m_note"></div>
       <button class="btn sm danger" onclick="document.getElementById('${id}').remove()">🗑 حذف الدواء</button>
+    </div>
+    <div class="field" style="margin-top:8px;background:#f7f7f7;border-radius:8px;padding:8px">
+      <label>🔗 دمج مع أصناف أخرى في نفس الروشتة (اختياري)</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <select class="m_comboType" style="flex:1;min-width:140px">
+          <option value="">بدون دمج</option>
+          <option value="injection">💉 حقنة مجمّعة (تُحل وتُعطى معًا)</option>
+          <option value="water">💧 خلطة مياه مجمّعة (تُعطى معًا في نفس السقاية)</option>
+        </select>
+        <input class="m_comboGroup" placeholder="رمز المجموعة (مثال: A)" style="flex:0 0 110px">
+        <input class="m_comboNote" placeholder="مثال: 0.3 سم عضل بالرقبة / لمدة 8 ساعات" style="flex:1.5;min-width:180px">
+      </div>
+      <div class="small" style="color:#777">اكتب نفس الرمز في كل الأصناف اللي عايز تجمعهم مع بعض في سطر واحد بالروشتة المطبوعة (الحساب الفعلي لكل صنف في استهلاك الأصناف بيفضل مستقل زي ما هو).</div>
     </div>`;
   document.getElementById("medRows").appendChild(div);
 }
@@ -3427,7 +3761,7 @@ function onMedRowInput(rowId){
     note.innerHTML=`⚠ خبرة العيادة: استجابة ضعيفة/فشل في ${stats.weak+stats.failed} من ${stats.total} حالة سابقة لهذا الدواء مع ${dxName(diseaseId)} (${weakPct}%)`;
     note.style.color="var(--accent)";
   }else{
-    note.innerHTML=`✅ خبرة العيادة: استجابة جيدة/ممتازة في ${stats.excellent+stats.partial} من ${stats.total} حالة سابقة`;
+    note.innerHTML=`✅ خبرة العيادة: استجابة جيدة/ممتازة في ${stats.excellent+stats.good+stats.partial} من ${stats.total} حالة سابقة`;
     note.style.color="var(--ok)";
   }
 }
@@ -3452,6 +3786,9 @@ function collectMeds(){
       diseaseId:isOther?"":selVal,
       diseaseCustom:isOther?r.querySelector(".m_disease_other").value.trim():"",
       purpose:r.querySelector(".m_purpose").value,
+      comboType:r.querySelector(".m_comboType")?r.querySelector(".m_comboType").value:"",
+      comboGroup:r.querySelector(".m_comboGroup")?r.querySelector(".m_comboGroup").value.trim():"",
+      comboNote:r.querySelector(".m_comboNote")?r.querySelector(".m_comboNote").value.trim():"",
       response:""
     };
   }).filter(m=>m.drug);
@@ -3463,20 +3800,21 @@ function getDrugResponseStats(diseaseId,drugName){
   const norm=s=>(s||"").trim().toLowerCase();
   const target=norm(drugName);
   if(!target)return null;
-  let excellent=0,partial=0,weak=0,failed=0,total=0;
+  let excellent=0,good=0,partial=0,weak=0,failed=0,total=0;
   STATE.visits.forEach(v=>{
     (v.medications||[]).forEach(m=>{
       const effectiveDiseaseId=m.diseaseId||v.confirmedDiagnosisId||null;
       if(effectiveDiseaseId===diseaseId && norm(m.drug)===target && m.response){
         total++;
         if(m.response==="excellent")excellent++;
+        else if(m.response==="good")good++;
         else if(m.response==="partial")partial++;
         else if(m.response==="weak")weak++;
         else if(m.response==="failed")failed++;
       }
     });
   });
-  return {excellent,partial,weak,failed,total};
+  return {excellent,good,partial,weak,failed,total};
 }
 function getConfirmedCaseCount(diseaseId){
   return STATE.visits.filter(v=>v.confirmedDiagnosisId===diseaseId).length;
@@ -3870,7 +4208,10 @@ async function saveVisitInner(clientId,date){
       waterPh:document.getElementById("fi_ph").value,
       biosecurity:document.getElementById("fi_biosec").value
     },
-    serology:collectSero()
+    serology:collectSero(),
+    nextVisitDate: document.getElementById("v_nextVisitDate").value || null,
+    nextVisitType: document.getElementById("v_nextVisitType").value || null,
+    nextVisitNote: document.getElementById("v_nextVisitNote").value.trim() || null
   };
 
   if(editingVisitId){
@@ -3882,18 +4223,27 @@ async function saveVisitInner(clientId,date){
     document.getElementById("saveMsg").textContent="✅ تم الحفظ بنجاح.";
   }
 
+  const remRow=document.getElementById("nextVisitReminderRow");
+  if(visit.nextVisitDate){
+    const client=STATE.clients.find(c=>c.id===clientId);
+    const typeLabel={farm:"زيارة مزرعة",lab:"زيارة معمل",call:"متابعة تليفونية"}[visit.nextVisitType]||"متابعة";
+    const title=`${typeLabel} — ${client?client.name:"عميل"}${house?' ('+house+')':''}`;
+    remRow.style.display="";
+    remRow.innerHTML=`<button class="btn sm pri" onclick='downloadVisitReminderICS(${JSON.stringify(visit.nextVisitDate)}, ${JSON.stringify(title)}, ${JSON.stringify(visit.nextVisitNote||"")})'>📅 إضافة تذكير للتقويم (${visit.nextVisitDate})</button>`;
+  } else {
+    remRow.style.display="none"; remRow.innerHTML="";
+  }
+
   if(window.__pendingMedVisitId){
     const prevVisit=STATE.visits.find(v=>v.id===window.__pendingMedVisitId);
     if(prevVisit){
-      const meds=(prevVisit.medications||[]).map(m=>({...m}));
-      let pendingIdx=0;
-      const updated=meds.map(m=>{
-        if(!m.response){
-          const sel=document.getElementById("medresp_"+pendingIdx);
-          pendingIdx++;
-          if(sel && sel.value) return {...m, response:sel.value};
-        }
-        return m;
+      const updated=(prevVisit.medications||[]).map((m,idx)=>{
+        const sel=document.getElementById("medresp_"+idx);
+        if(!sel) return m;
+        const conf=document.getElementById("medconf_"+idx);
+        const newResponse=sel.value||m.response||"";
+        const newConfirmed=conf?conf.checked:!!m.responseConfirmed;
+        return {...m, response:newResponse, responseConfirmed:newConfirmed};
       });
       await fs.collection("visits").doc(prevVisit.id).update({medications:updated});
     }
@@ -3914,6 +4264,9 @@ async function saveVisitInner(clientId,date){
   document.getElementById("breedTargetHint").textContent="";
   document.getElementById("v_waterFactor").value="2.2";
   document.getElementById("v_waterEstimateL").value="";
+  document.getElementById("v_nextVisitDate").value="";
+  document.getElementById("v_nextVisitType").value="farm";
+  document.getElementById("v_nextVisitNote").value="";
   window.__lastDailyFeedTargetKg=null;
   document.getElementById("dx_nbirds").value="5"; document.getElementById("dx_nbirds").dataset.auto="1";
   document.getElementById("nf_placement").dataset.auto="1";
@@ -3967,6 +4320,9 @@ function editVisit(id){
   document.getElementById("v_prevmed").value=v.prevMedications||"";
   document.getElementById("v_opinion").value=v.opinion||"";
   document.getElementById("v_txplan").value=v.treatmentPlan||"";
+  document.getElementById("v_nextVisitDate").value=v.nextVisitDate||"";
+  document.getElementById("v_nextVisitType").value=v.nextVisitType||"farm";
+  document.getElementById("v_nextVisitNote").value=v.nextVisitNote||"";
   document.getElementById("nv_location").value=v.visitLocation||"farm";
   if(v.confirmedDiagnoses&&v.confirmedDiagnoses.length){
     confirmedDxList=v.confirmedDiagnoses.slice();
@@ -4045,6 +4401,9 @@ function editVisit(id){
         row.querySelector(".m_disease").value=m.diseaseId;
       }
       if(m.purpose) row.querySelector(".m_purpose").value=m.purpose;
+      if(m.comboType && row.querySelector(".m_comboType")) row.querySelector(".m_comboType").value=m.comboType;
+      if(m.comboGroup && row.querySelector(".m_comboGroup")) row.querySelector(".m_comboGroup").value=m.comboGroup;
+      if(m.comboNote && row.querySelector(".m_comboNote")) row.querySelector(".m_comboNote").value=m.comboNote;
     }
   });
   document.getElementById("vaccRows").innerHTML=""; vaccCount=0;
