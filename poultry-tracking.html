@@ -1871,10 +1871,13 @@ function collapseCombos(meds){
       const key=m.comboType+"|"+m.comboGroup;
       if(!(key in seen)){
         seen[key]=out.length;
-        out.push({__combo:true, comboType:m.comboType, comboNote:m.comboNote||"", drugs:[m], days:m.days});
+        out.push({__combo:true, comboType:m.comboType, comboNote:m.comboNote||"", comboDays:(m.comboDays&&m.comboDays.length)?m.comboDays:null, comboHours:m.comboHours||"", drugs:[m], days:m.days});
       }else{
-        out[seen[key]].drugs.push(m);
-        if(!out[seen[key]].comboNote && m.comboNote) out[seen[key]].comboNote=m.comboNote;
+        const g=out[seen[key]];
+        g.drugs.push(m);
+        if(!g.comboNote && m.comboNote) g.comboNote=m.comboNote;
+        if(!g.comboDays && m.comboDays && m.comboDays.length) g.comboDays=m.comboDays;
+        if(!g.comboHours && m.comboHours) g.comboHours=m.comboHours;
       }
     }else{
       out.push(m);
@@ -1885,10 +1888,18 @@ function collapseCombos(meds){
 function groupMedsByDays(meds){
   const groups=[]; const index={};
   collapseCombos(meds).forEach(m=>{
-    const key=(m.days&&m.days.length)?[...m.days].sort((a,b)=>a-b).join(","):"";
+    let key, label;
+    if(m.__combo && m.comboType==="injection"){
+      key="__injection_once__"; label="مرة واحدة (حقن)";
+    } else if(m.__combo && m.comboDays && m.comboDays.length){
+      key="combo:"+[...m.comboDays].sort((a,b)=>a-b).join(",");
+      label=DAY_NAMES.filter((d,i)=>m.comboDays.includes(i)).join("، ");
+    } else {
+      key=(m.days&&m.days.length)?[...m.days].sort((a,b)=>a-b).join(","):"";
+      label=key? DAY_NAMES.filter((d,i)=>key.split(",").map(Number).includes(i)).join("، ") : "يوميًا";
+    }
     if(!(key in index)){
       index[key]=groups.length;
-      const label=key? DAY_NAMES.filter((d,i)=>key.split(",").map(Number).includes(i)).join("، ") : "يوميًا";
       groups.push({label,items:[]});
     }
     groups[index[key]].items.push(m);
@@ -1897,11 +1908,17 @@ function groupMedsByDays(meds){
 }
 function formatMedLine(m){
   if(m.__combo){
-    const names=m.drugs.map(d=>d.drug).filter(Boolean).join(' + ');
+    const names=m.drugs.map(d=>{
+      const dose=formatMedDose(d);
+      return dose?`${d.drug} (${dose})`:d.drug;
+    }).join(' + ');
     const icon=m.comboType==='injection'?'💉':'💧';
     const verb=m.comboType==='injection'?'تُحل وتُعطى معًا':'تُعطى معًا في نفس السقاية';
     let s=`• ${icon} ${names} — ${verb}`;
-    if(m.comboNote) s+=`: ${m.comboNote}`;
+    const extras=[];
+    if(m.comboNote) extras.push(m.comboNote);
+    if(m.comboType!=='injection' && m.comboHours) extras.push(`سقاية ${m.comboHours==='24'?'طوال اليوم':m.comboHours+' ساعة'} يوميًا`);
+    if(extras.length) s+=`: ${extras.join(' — ')}`;
     return s;
   }
   let parts=[`• ${m.drug}`];
@@ -3741,9 +3758,21 @@ function addMedRow(){
           <option value="water">💧 خلطة مياه مجمّعة (تُعطى معًا في نفس السقاية)</option>
         </select>
         <input class="m_comboGroup" placeholder="رمز المجموعة (مثال: A)" style="flex:0 0 110px">
-        <input class="m_comboNote" placeholder="مثال: 0.3 سم عضل بالرقبة / لمدة 8 ساعات" style="flex:1.5;min-width:180px">
+        <input class="m_comboNote" placeholder="مثال: 0.3 سم عضل بالرقبة" style="flex:1.5;min-width:180px">
       </div>
-      <div class="small" style="color:#777">اكتب نفس الرمز في كل الأصناف اللي عايز تجمعهم مع بعض في سطر واحد بالروشتة المطبوعة (الحساب الفعلي لكل صنف في استهلاك الأصناف بيفضل مستقل زي ما هو).</div>
+      <div class="small" style="color:#777;margin-top:4px">اكتب نفس الرمز في كل الأصناف اللي عايز تجمعهم مع بعض في سطر واحد بالروشتة المطبوعة (الحساب الفعلي لكل صنف في استهلاك الأصناف بيفضل مستقل زي ما هو). الحقنة بتتصنّف تلقائي "مرة واحدة" في الروشتة بدل "يوميًا".</div>
+      <div style="margin-top:8px">
+        <label class="small">📅 أيام السقاية الأسبوعية (اختياري — للخلطة المائية بس؛ لو محدَّدة هتظهر بدل "يوميًا")</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0">
+          ${DAY_NAMES.map((d,i)=>`<label class="small"><input type="checkbox" class="m_comboDay" value="${i}"> ${d}</label>`).join("")}
+        </div>
+        <select class="m_comboHours">
+          <option value="">مدة السقاية اليومية غير محدَّدة</option>
+          <option value="8">سقاية 8 ساعات</option>
+          <option value="12">سقاية 12 ساعة</option>
+          <option value="24">طوال اليوم (24 ساعة)</option>
+        </select>
+      </div>
     </div>`;
   document.getElementById("medRows").appendChild(div);
 }
@@ -3795,6 +3824,8 @@ function collectMeds(){
       comboType:r.querySelector(".m_comboType")?r.querySelector(".m_comboType").value:"",
       comboGroup:r.querySelector(".m_comboGroup")?r.querySelector(".m_comboGroup").value.trim():"",
       comboNote:r.querySelector(".m_comboNote")?r.querySelector(".m_comboNote").value.trim():"",
+      comboDays:Array.from(r.querySelectorAll(".m_comboDay:checked")).map(cb=>parseInt(cb.value)),
+      comboHours:r.querySelector(".m_comboHours")?r.querySelector(".m_comboHours").value:"",
       response:""
     };
   }).filter(m=>m.drug);
@@ -4298,6 +4329,7 @@ function editVisit(id){
   const flock=STATE.flocks.find(f=>f.id===v.flockId);
   window.__matchedFlockId=v.flockId||null;
   window.__pinnedFlockId=v.flockId||null;
+  updateProdVisibility();
   renderClientOpenFlocks();
   document.getElementById("nv_house").value=flock?flock.houseName||"":"";
   document.getElementById("nv_date").value=v.date||"";
@@ -4410,6 +4442,8 @@ function editVisit(id){
       if(m.comboType && row.querySelector(".m_comboType")) row.querySelector(".m_comboType").value=m.comboType;
       if(m.comboGroup && row.querySelector(".m_comboGroup")) row.querySelector(".m_comboGroup").value=m.comboGroup;
       if(m.comboNote && row.querySelector(".m_comboNote")) row.querySelector(".m_comboNote").value=m.comboNote;
+      if(m.comboDays && m.comboDays.length) row.querySelectorAll(".m_comboDay").forEach(cb=>{ if(m.comboDays.includes(parseInt(cb.value))) cb.checked=true; });
+      if(m.comboHours && row.querySelector(".m_comboHours")) row.querySelector(".m_comboHours").value=m.comboHours;
     }
   });
   document.getElementById("vaccRows").innerHTML=""; vaccCount=0;
