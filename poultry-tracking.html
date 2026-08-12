@@ -806,6 +806,12 @@ const LESIONS = [
   ["cs_dyspnea","cs","صعوبة تنفس / لهاث / فتح المنقار","Dyspnea / gasping"],
   ["cs_rales","cs","خرخرة / صفير بالصدر","Respiratory rales / snicking"],
   ["cs_diarrhea","cs","إسهال","Diarrhea"],
+  ["cs_brown_diarrhea","cs","إسهال بني","Brown diarrhea"],
+  ["cs_brown_diarrhea_undigested","cs","إسهال بني بعلف غير مهضوم","Brown diarrhea with undigested feed"],
+  ["cs_brown_watery_diarrhea","cs","إسهال بني سائل","Watery brown diarrhea"],
+  ["cs_litter_pecking","cs","نكش السبلة/الأرض أو نكش وبعثرة العلف على الأرض","Litter/ground pecking or feed scratching-and-scattering"],
+  ["cs_digested_blood","cs","دم مهضوم بالبراز (بني غامق/أسود قاري)","Digested blood in droppings (melena)"],
+  ["cs_orange_diarrhea","cs","إسهال برتقالي","Orange diarrhea"],
   ["cs_greenish_diarrhea","cs","إسهال أخضر","Greenish diarrhea"],
   ["cs_white_diarrhea","cs","إسهال أبيض جيري","White pasty diarrhea"],
   ["cs_white_watery","cs","إسهال أبيض مائي","Watery white diarrhea"],
@@ -1110,7 +1116,7 @@ const LESIONS = [
 const DISEASES = [
   {id:"col",ar:"الكولاي / CCRD",en:"Colibacillosis / CCRD",cls:"بكتيري",aMin:0,aMax:999,
    test:"عزل E. coli من الكبد/نخاع العظم + اختبار حساسية",
-   w:{lv_perihep:3,ht_pericarditis:3,ts_orchitis:1,ts_nodules:1,as_yellow_caseous:3,ov_peritonitis:3,pt_omphalitis:3,pt_fibrin:3,as_sacculitis:2,as_adhesions:2,ht_fibrin:2,od_salpingitis:2,od_egg_retention:2,sk_cellulitis:2,pt_effusion:2,as_cloudiness:1,as_thickening:1,od_exudate:1,sp_enlarged:1,lv_hepatomegaly:1,ln_pneumonia:1,ln_consolidation:1,ln_congestion:1,ov_rupture:1,ov_cysts:1,hd_facial_edema:1,cs_sudden_death:1,tm_cyanosis:1,pt_egg_free:1}},
+   w:{lv_perihep:3,ht_pericarditis:3,ts_orchitis:1,ts_nodules:1,as_yellow_caseous:3,ov_peritonitis:3,pt_omphalitis:3,pt_fibrin:3,as_sacculitis:2,as_adhesions:2,ht_fibrin:2,od_salpingitis:2,od_egg_retention:2,sk_cellulitis:2,pt_effusion:2,as_cloudiness:1,as_thickening:1,od_exudate:1,sp_enlarged:1,lv_hepatomegaly:1,ln_pneumonia:1,ln_consolidation:1,ln_congestion:1,ov_rupture:1,ov_cysts:1,hd_facial_edema:1,cs_sudden_death:1,tm_cyanosis:1,pt_egg_free:1,cs_litter_pecking:1}},
   {id:"typ",ar:"تيفود الطيور",en:"Fowl Typhoid (S. Gallinarum)",cls:"بكتيري",aMin:28,aMax:999,
    test:"عزل S. Gallinarum + اختبار التلازن المصلي",
    w:{lv_bronze:3,ts_nodules:2,ts_orchitis:1,lv_green:2,lv_white_spots:2,sp_enlarged:2,ov_regression:2,ov_misshapen_discolored:3,cc_anemic:2,lv_necrotic_foci:1,lv_hepatomegaly:1,sp_necrotic:1,ht_hemorrhage:1,ov_peritonitis:1,od_salpingitis:1,ht_nodules:1,cn_wasting:1,cs_greenish_diarrhea:1,cs_diarrhea:1,pt_fibrin:1}},
@@ -1131,7 +1137,7 @@ const DISEASES = [
    w:{as_foamy:3,as_sacculitis:2,as_cloudiness:2,as_thickening:2,cs_rales:2,hd_ocular_froth:2,tr_catarrh:1,cs_cough:1,cs_sneezing:1,hd_conjunctivitis:1,ln_pneumonia:1,od_salpingitis:1,nb_sinusitis:1,cs_drop_production:1}},
   {id:"nec",ar:"الالتهاب المعوي النخري",en:"Necrotic Enteritis",cls:"بكتيري",aMin:14,aMax:42,
    test:"مسحة بطانة (قضبان Gram+) + عزل C. perfringens",
-   w:{ji_fibrinonecrotic:3,ji_ballooning:2,du_necrosis:1,lv_necrotic_foci:1,lv_perihep:1,cs_sudden_death:1}},
+   w:{ji_fibrinonecrotic:3,ji_ballooning:2,du_necrosis:1,lv_necrotic_foci:1,lv_perihep:1,cs_sudden_death:1,cs_brown_diarrhea_undigested:3,cs_litter_pecking:3,cs_orange_diarrhea:2,cs_brown_watery_diarrhea:2,cs_brown_diarrhea:1,cs_diarrhea:1}},
   {id:"cde",ar:"الالتهاب المعوي المزمن بالإثني عشر (بياض)",en:"Chronic Duodenal Enteritis (layers)",cls:"سبب غير محدد بدقة",aMin:140,aMax:220,birdTypes:["layer","breeder"],
    test:"تشخيص حقلي — الصورة المميزة: ريش غير مرتب مع فقد ريش + تباطؤ الإنتاج حوالي الأسبوع 25 + براز رخو. فحص الإثني عشر (أول 20-30 سم): محتوى زائد رخو بلون غير طبيعي، وأحيانًا آفات نخرية رمادية داكنة قد ينزف بعضها. السبب غير محدد بدقة، لكن الآفات ترتبط غالباً بـ Clostridium spp.",
    w:{du_necrosis:2,du_catarrh:2,sk_plumage_untidy:2,du_thickened:1,cs_drop_production:1,cs_diarrhea:1}},
@@ -1196,7 +1202,7 @@ const DISEASES = [
 
   {id:"coc",ar:"الكوكسيديا",en:"Coccidiosis",cls:"طفيلي",aMin:14,aMax:56,
    test:"كشط البطانة وفحص الأوسيست + تحديد النوع بالموقع: إثني عشر (لويحات بيضاء)=acervulina · وسط الأمعاء (مخاط برتقالي)=maxima · وسط الأمعاء (نزف شديد+بؤر بيضاء)=necatrix · الأعورين (دم/سدادات)=tenella · الأمعاء السفلى والمستقيم (نخر تجلطي)=brunetti",
-   w:{ce_coccidial:3,ce_blood:3,du_white_plaques:3,ji_salt_pepper:3,rec_coagulative_necrosis:3,ce_hemorrhage:2,ji_orange_mucus:2,ji_hemorrhagic:2,du_hemorrhage:2,rec_petechiae:1,rec_obstruction:1,ji_ballooning:1,ji_thick_wall:1,du_thickened:1,du_enteritis:1,ce_typhlitis:1,cn_wasting:1,cs_diarrhea:1}},
+   w:{ce_coccidial:3,ce_blood:3,du_white_plaques:3,ji_salt_pepper:3,rec_coagulative_necrosis:3,ce_hemorrhage:2,ji_orange_mucus:2,ji_hemorrhagic:2,du_hemorrhage:2,cs_digested_blood:2,rec_petechiae:1,rec_obstruction:1,ji_ballooning:1,ji_thick_wall:1,du_thickened:1,du_enteritis:1,ce_typhlitis:1,cn_wasting:1,cs_diarrhea:1,cs_brown_diarrhea:1}},
   {id:"his",ar:"الهيستومونس (الرأس السوداء)",en:"Histomoniasis",cls:"طفيلي",aMin:28,aMax:999,
    test:"histo + كشط للكبد/الأعور (بروتوزوا)",
    w:{lv_target:3,ce_caseous_core:3,cs_sulfur_yellow:2,ce_ulcer:2,ce_necrosis:1,ce_typhlitis:1,cn_wasting:1}},
@@ -1791,12 +1797,13 @@ async function buildPrescriptionCanvas(override){
       });
     }else if(groups.length){
       yy+=Math.round(f.gapAfterOpinion*scale);
+      let mNum=1;
       groups.forEach(g=>{
         ctx.font=`bold ${Math.round(f.medHead*scale)}px Tahoma, Arial`;
         yy=dxWrapAndDraw(ctx, g.label, W*0.93, yy, W*0.86, Math.round(f.lineHead*scale), true);
         yy+=Math.round(f.gapAfterHead*scale);
         ctx.font=`${Math.round(f.medLine*scale)}px Tahoma, Arial`;
-        g.items.forEach(m=>{ yy=dxWrapAndDraw(ctx, formatMedLine(m), W*0.93, yy, W*0.86, Math.round(f.lineMed*scale), true); });
+        g.items.forEach(m=>{ yy=dxWrapAndDraw(ctx, formatMedLine(m, (mNum++)+"-"), W*0.93, yy, W*0.86, Math.round(f.lineMed*scale), true); });
         yy+=Math.round(f.gapAfterGroup*scale);
       });
     }
@@ -1838,13 +1845,14 @@ async function buildPrescriptionCanvas(override){
     });
   }else if(groups.length){
     y+=Math.round(F.gapAfterOpinion*scale);
+    let mNum=1;
     groups.forEach(g=>{
       ctx.font=`bold ${Math.round(F.medHead*scale)}px Tahoma, Arial`;
       y=dxWrapAndDraw(ctx, g.label, W*0.93, y, W*0.86, Math.round(F.lineHead*scale));
       y+=Math.round(F.gapAfterHead*scale);
       ctx.font=`${Math.round(F.medLine*scale)}px Tahoma, Arial`;
       g.items.forEach(m=>{
-        y=dxWrapAndDraw(ctx, formatMedLine(m), W*0.93, y, W*0.86, Math.round(F.lineMed*scale));
+        y=dxWrapAndDraw(ctx, formatMedLine(m, (mNum++)+"-"), W*0.93, y, W*0.86, Math.round(F.lineMed*scale));
       });
       y+=Math.round(F.gapAfterGroup*scale);
     });
@@ -1906,22 +1914,23 @@ function groupMedsByDays(meds){
   });
   return groups;
 }
-function formatMedLine(m){
+function formatMedLine(m, prefix){
+  const bullet=prefix||'•';
   if(m.__combo){
     const names=m.drugs.map(d=>{
-      const dose=formatMedDose(d);
-      return dose?`${d.drug} (${dose})`:d.drug;
+      let dose=formatMedDose(d);
+      if(dose) dose=dose.replace(/\s*(?:لمدة|لمده|\*|×)\s*[\d.,]+\s*(?:يوم|أيام|ايام)/,'').trim();
+      return dose?`${d.drug} ${dose}`:d.drug;
     }).join(' + ');
     const icon=m.comboType==='injection'?'💉':'💧';
-    const verb=m.comboType==='injection'?'تُحل وتُعطى معًا':'تُعطى معًا في نفس السقاية';
-    let s=`• ${icon} ${names} — ${verb}`;
+    let s=`${bullet} ${icon} ${names}`;
     const extras=[];
     if(m.comboNote) extras.push(m.comboNote);
-    if(m.comboType!=='injection' && m.comboHours) extras.push(`سقاية ${m.comboHours==='24'?'طوال اليوم':m.comboHours+' ساعة'} يوميًا`);
-    if(extras.length) s+=`: ${extras.join(' — ')}`;
+    if(m.comboType!=='injection' && m.comboHours) extras.push(`سقاية ${m.comboHours==='24'?'طوال اليوم':m.comboHours+' س'}`);
+    if(extras.length) s+=` — ${extras.join(' — ')}`;
     return s;
   }
-  let parts=[`• ${m.drug}`];
+  let parts=[`${bullet} ${m.drug}`];
   const dose=formatMedDose(m);
   if(dose) parts.push(dose);
   if(m.pack) parts.push(`العبوة: ${m.pack}`);
