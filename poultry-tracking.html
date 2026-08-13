@@ -2466,8 +2466,7 @@ function renderClientDetail(id){
         return `<div class="visititem">
           <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':'<span class="chip closed">مزرعة</span>'}${(v.sampleAlive||v.sampleDead)?` <span class="chip visit">🧪 عينة ${((v.sampleAlive||0)+(v.sampleDead||0))}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}</span>`:''} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
             ${v.complaint?' · '+v.complaint:''}</div>
-          ${top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:''}
-          ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed}</b></div>`:''}
+          ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed}</b></div>`:(top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:'')}
           ${meds.length?`<div class="small">💊 ${meds.map(m=>`${formatMedShort(m, v.waterEstimateL)}${m.response?' ['+(RESP_LABEL[m.response]||m.response)+']':''}`).join('، ')}</div>`:''}
           ${formatFarmInspection(v.farmInspection)?`<div class="small">🌡️ ${formatFarmInspection(v.farmInspection)}</div>`:''}
           ${v.opinion?`<div class="small">📝 ${v.opinion}</div>`:''}
@@ -2843,8 +2842,8 @@ async function exportClientReportPDF(evt){
         const meds=v.medications||[];
         const sampleTxt=(v.sampleAlive||v.sampleDead)?` [عينة ${(v.sampleAlive||0)+(v.sampleDead||0)}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}]`:'';
         line(`${v.date} — ${v.visitLocation==='lab'?'معمل':'مزرعة'}${sampleTxt} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}${v.complaint?' · '+v.complaint:''}`, {size:16, bold:true, gap:5});
-        if(top) line(`🔬 المشتبه الأول: ${top.ar} (${top.score})`, {size:15, gap:3});
         if(confirmed) line(`✅ التشخيص المؤكَّد: ${confirmed}`, {size:15, gap:3, color:"#1c6b45"});
+        else if(top) line(`🔬 المشتبه الأول: ${top.ar} (${top.score})`, {size:15, gap:3});
         if(meds.length) line(`💊 ${meds.map(m=>formatMedShort(m)).join('، ')}`, {size:15, gap:3});
         const fi=formatFarmInspection(v.farmInspection);
         if(fi) line(`🌡️ ${fi}`, {size:14, gap:3, color:"#555"});
