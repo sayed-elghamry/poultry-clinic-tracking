@@ -287,7 +287,7 @@
           <span id="placementCalc" class="hint" style="margin-top:4px;display:block"></span></div>
         <div class="field"><label>عدد الطيور الحالي</label><input id="nv_birdcount" type="number" min="1" oninput="checkFlockMatch();updateMortCalc();onTraysChange();refreshBreedTarget()"></div>
         <div class="field"><label>مكان الزيارة</label>
-          <select id="nv_location"><option value="farm">زيارة مزرعة</option><option value="lab">زيارة معمل</option></select></div>
+          <select id="nv_location"><option value="farm">زيارة مزرعة</option><option value="lab">زيارة معمل</option><option value="call">متابعة تليفونية</option></select></div>
       </div>
       <div id="pendingMedResponses"></div>
       <div id="flockMatchBanner"></div>
@@ -635,10 +635,26 @@ const BIRD_LABEL = { broiler:"تسمين", sasso:"ساسو", baladi:"بلدي", 
 /* ---------------------- مرجعية السلالات (من كراسة العنبر اليومية وكراسة البياض — د. السيد الغمري) ---------------------- */
 const TEMP_TARGET = {1:33, 2:30, 3:27, 4:25, 5:23, 6:21, 7:20}; // مرجعي حرارة العنبر بالأسبوع للتسمين (°م)
 const BREEDS = {
- "ross308":{name:"Ross 308",w:{7:190,14:485,21:990,28:1600,35:2290,42:2980,45:3260},fcr:{7:0.90,14:1.10,21:1.28,28:1.44,35:1.58,42:1.72,45:1.80}},
- "cobb500":{name:"Cobb 500",w:{7:185,14:465,21:950,28:1560,35:2270,42:2980,45:3260},fcr:{7:0.89,14:1.09,21:1.27,28:1.43,35:1.57,42:1.71,45:1.79}},
- "aa":{name:"Arbor Acres Plus (AA)",w:{7:185,14:470,21:965,28:1560,35:2260,42:2960,45:3230},fcr:{7:0.90,14:1.11,21:1.29,28:1.45,35:1.59,42:1.73,45:1.81}},
- "hubbard":{name:"Hubbard",w:{7:175,14:450,21:930,28:1520,35:2210,42:2900,45:3180},fcr:{7:0.91,14:1.12,21:1.30,28:1.46,35:1.60,42:1.74,45:1.82}},
+ "ross308":{name:"Ross 308",
+  w:{1:57,2:73,3:91,4:111,5:134,6:160,7:189,8:221,9:257,10:296,11:339,12:385,13:434,14:488,15:545,16:605,17:669,18:737,19:808,20:882,21:959,22:1040,23:1123,24:1209,25:1297,26:1388,27:1481,28:1576,29:1673,30:1771,31:1871,32:1973,33:2075,34:2179,35:2283,36:2388,37:2493,38:2599,39:2705,40:2811,41:2917,42:3023,43:3129,44:3234,45:3339},
+  fcr:{1:0.210,2:0.379,3:0.515,4:0.627,5:0.718,6:0.793,7:0.856,8:0.909,9:0.955,10:0.995,11:1.030,12:1.062,13:1.090,14:1.117,15:1.142,16:1.165,17:1.187,18:1.209,19:1.230,20:1.250,21:1.270,22:1.290,23:1.309,24:1.328,25:1.348,26:1.367,27:1.386,28:1.405,29:1.424,30:1.443,31:1.462,32:1.480,33:1.499,34:1.518,35:1.537,36:1.556,37:1.575,38:1.594,39:1.613,40:1.632,41:1.651,42:1.670,43:1.689,44:1.709,45:1.728},
+  source:"Aviagen — Ross 308 Broiler: Performance Objectives (2014), Male, As-Hatched metric table"},
+ "cobb500":{name:"Cobb 500",
+  w:{7:185,14:465,21:943,28:1524,35:2191,42:2857},
+  fcr:{7:0.902,14:1.165,21:1.264,28:1.402,35:1.530,42:1.675},
+  source:"بيانات من تطبيق مرجعي معتمَد من د. السيد (7 نقاط: 7/14/21/28/35/42 يوم) — تم التحقق من اتساقها الداخلي (وزن×FCR = العلف التراكمي المعروض بنفس التطبيق) بدقة كاملة"},
+ "aa":{name:"Arbor Acres Plus (AA)",
+  w:{1:61,2:79,3:100,4:123,5:148,6:177,7:209,8:244,9:283,10:325,11:370,12:419,13:471,14:527,15:586,16:648,17:714,18:782,19:854,20:928,21:1006,22:1085,23:1168,24:1252,25:1339,26:1428,27:1518,28:1611,29:1704,30:1799,31:1895,32:1992,33:2090,34:2188,35:2287,36:2386,37:2486,38:2585,39:2684,40:2784,41:2882,42:2981,43:3079,44:3176,45:3272},
+  fcr:{1:0.207,2:0.370,3:0.499,4:0.601,5:0.682,6:0.749,7:0.803,8:0.848,9:0.887,10:0.920,11:0.949,12:0.975,13:0.999,14:1.021,15:1.042,16:1.062,17:1.082,18:1.101,19:1.120,20:1.138,21:1.157,22:1.175,23:1.193,24:1.212,25:1.230,26:1.248,27:1.267,28:1.285,29:1.304,30:1.322,31:1.341,32:1.360,33:1.378,34:1.397,35:1.416,36:1.435,37:1.454,38:1.473,39:1.491,40:1.510,41:1.529,42:1.548,43:1.567,44:1.586,45:1.605},
+  source:"Aviagen — Arbor Acres Plus Broiler Performance Objectives (2022), As-Hatched metric table"},
+ "ir":{name:"Indian River (IR)",
+  w:{1:62,2:80,3:101,4:124,5:150,6:179,7:211,8:247,9:286,10:328,11:373,12:422,13:475,14:531,15:590,16:652,17:718,18:786,19:858,20:933,21:1010,22:1090,23:1172,24:1257,25:1344,26:1433,27:1524,28:1616,29:1710,30:1805,31:1901,32:1999,33:2097,34:2196,35:2295,36:2395,37:2495,38:2595,39:2695,40:2795,41:2895,42:2995,43:3093,44:3192,45:3289},
+  fcr:{1:0.205,2:0.365,3:0.491,4:0.591,5:0.670,6:0.735,7:0.788,8:0.832,9:0.869,10:0.902,11:0.930,12:0.956,13:0.980,14:1.003,15:1.024,16:1.045,17:1.065,18:1.084,19:1.103,20:1.122,21:1.142,22:1.161,23:1.180,24:1.199,25:1.218,26:1.237,27:1.256,28:1.275,29:1.295,30:1.314,31:1.333,32:1.353,33:1.372,34:1.392,35:1.411,36:1.431,37:1.451,38:1.470,39:1.490,40:1.510,41:1.529,42:1.549,43:1.569,44:1.588,45:1.608},
+  source:"Aviagen — Indian River Broiler Performance Objectives (2022), As-Hatched metric table"},
+ "hubbard":{name:"Hubbard",
+  w:{1:63,2:82,3:103,4:127,5:153,6:184,7:216,8:252,9:290,10:333,11:380,12:430,13:483,14:541,15:603,16:667,17:734,18:805,19:879,20:956,21:1035,22:1117,23:1200,24:1285,25:1373,26:1464,27:1554,28:1647,29:1741,30:1836,31:1933,32:2031,33:2130,34:2229,35:2330,36:2430},
+  fcr:{1:0.190,2:0.341,3:0.466,4:0.575,5:0.660,6:0.717,7:0.769,8:0.810,9:0.852,10:0.886,11:0.911,12:0.940,13:0.967,14:0.989,15:1.01,16:1.03,17:1.05,18:1.07,19:1.09,20:1.11,21:1.13,22:1.15,23:1.17,24:1.19,25:1.21,26:1.23,27:1.25,28:1.27,29:1.29,30:1.31,31:1.33,32:1.35,33:1.37,34:1.39,35:1.41,36:1.43},
+  source:"Hubbard — EFFICIENCY PLUS Broiler Performance Objectives, As-Hatched metric table (بيانات موثَّقة لغاية يوم 36 بس — الجدول المتاح اتقطع عند يوم 37)"},
  "other_broiler":{name:"سلالة تسمين أخرى",w:{7:185,14:470,21:960,28:1560,35:2270,42:2960,45:3240},fcr:{7:0.90,14:1.10,21:1.28,28:1.45,35:1.58,42:1.72,45:1.80}}
 };
 const BREEDS_L = {
@@ -666,9 +682,29 @@ function refTargetAt(map,x){
 }
 function refInterp(map,x){
   const k=Object.keys(map).map(Number).sort((a,b)=>a-b);
-  if(x<=k[0])return map[k[0]]; if(x>=k[k.length-1])return map[k[k.length-1]];
-  for(let i=0;i<k.length-1;i++){if(x>=k[i]&&x<=k[i+1]){const t=(x-k[i])/(k[i+1]-k[i]);return map[k[i]]+t*(map[k[i+1]]-map[k[i]]);}}
-  return map[k[0]];
+  const n=k.length;
+  if(x<=k[0])return map[k[0]];
+  if(x>=k[n-1])return map[k[n-1]];
+  if(n<3){ const t=(x-k[0])/(k[1]-k[0]); return map[k[0]]+t*(map[k[1]]-map[k[0]]); }
+  // منحنى تكعيبي رتيب (Fritsch-Carlson monotonic cubic Hermite) بين النقاط المرجعية القليلة (كل 7 أيام).
+  // بديل عن الخط المستقيم البسيط اللي كان بيدّي معدل نمو يومي "ثابت" طول الأسبوع كامل (يقفز فجأة عند كل نقطة مرجعية)،
+  // بينما النمو الحقيقي بيتزايد يوميًا بشكل تدريجي وناعم — الفرق ده كان بيولّد تحذير "سحب علف ضعيف" غلط في أول كل أسبوع.
+  const xs=k, ys=k.map(kk=>map[kk]), m=n;
+  const h=[], d=[];
+  for(let i=0;i<m-1;i++){ h[i]=xs[i+1]-xs[i]; d[i]=(ys[i+1]-ys[i])/h[i]; }
+  const t=[]; t[0]=d[0]; t[m-1]=d[m-2];
+  for(let i=1;i<m-1;i++){
+    if(d[i-1]*d[i]<=0) t[i]=0;
+    else{ const w1=2*h[i]+h[i-1], w2=h[i]+2*h[i-1]; t[i]=(w1+w2)/(w1/d[i-1]+w2/d[i]); }
+  }
+  for(let i=0;i<m-1;i++){
+    if(x>=xs[i]&&x<=xs[i+1]){
+      const tt=(x-xs[i])/h[i], tt2=tt*tt, tt3=tt2*tt;
+      const h00=2*tt3-3*tt2+1, h10=tt3-2*tt2+tt, h01=-2*tt3+3*tt2, h11=tt3-tt2;
+      return h00*ys[i]+h10*h[i]*t[i]+h01*ys[i+1]+h11*h[i]*t[i+1];
+    }
+  }
+  return ys[m-1];
 }
 function populateBreedSelect(){
   const bt=document.getElementById("nf_birdtype").value;
@@ -816,7 +852,9 @@ const ORGANS = [
 const LESIONS = [
   ["cs_sneezing","cs","عطس","Sneezing"],
   ["cs_cough","cs","سعال / كحة","Coughing"],
-  ["cs_nasal_discharge","cs","إفرازات مخاطية من الأنف","Nasal mucous discharge"],
+  ["cs_nasal_discharge","cs","إفرازات مخاطية من الأنف (عند الضغط)","Nasal mucous discharge (on pressure)"],
+  ["cs_nasal_watery","cs","إفرازات مائية رقيقة من الأنف (عند الضغط)","Thin watery nasal discharge (on pressure)"],
+  ["cs_nasal_bloody","cs","إفرازات دموية من الأنف (عند الضغط)","Bloody nasal discharge (on pressure)"],
   ["cs_dyspnea","cs","صعوبة تنفس / لهاث / فتح المنقار","Dyspnea / gasping"],
   ["cs_rales","cs","خرخرة / صفير بالصدر","Respiratory rales / snicking"],
   ["cs_diarrhea","cs","إسهال","Diarrhea"],
@@ -1164,7 +1202,7 @@ const LESIONS = [
 const DISEASES = [
   {id:"col",ar:"الكولاي / CCRD",en:"Colibacillosis / CCRD",cls:"بكتيري",aMin:0,aMax:999,
    test:"عزل E. coli من الكبد/نخاع العظم + اختبار حساسية",
-   w:{lv_perihep:3,ht_pericarditis:3,ts_orchitis:1,ts_nodules:1,as_yellow_caseous:3,ov_peritonitis:3,pt_omphalitis:3,pt_fibrin:3,as_sacculitis:2,as_adhesions:2,ht_fibrin:2,od_salpingitis:2,od_egg_retention:2,sk_cellulitis:2,pt_effusion:2,as_cloudiness:1,as_thickening:1,od_exudate:1,sp_enlarged:1,lv_hepatomegaly:1,ln_pneumonia:1,ln_consolidation:1,ln_congestion:1,ov_rupture:1,ov_cysts:1,hd_facial_edema:1,cs_sudden_death:1,tm_cyanosis:1,pt_egg_free:1,cs_litter_pecking:1}},
+   w:{lv_perihep:3,ht_pericarditis:3,ts_orchitis:1,ts_nodules:1,as_yellow_caseous:3,ov_peritonitis:3,pt_omphalitis:3,pt_fibrin:3,as_sacculitis:2,as_adhesions:2,ht_fibrin:2,od_salpingitis:2,od_egg_retention:2,sk_cellulitis:2,pt_effusion:2,as_cloudiness:1,as_thickening:1,od_exudate:1,sp_enlarged:1,lv_hepatomegaly:1,ln_pneumonia:1,ln_consolidation:1,ln_congestion:1,ov_rupture:1,ov_cysts:1,hd_facial_edema:1,cs_sudden_death:1,tm_cyanosis:1,pt_egg_free:1,cs_litter_pecking:1,cs_nasal_discharge:1,cs_nasal_watery:1}},
   {id:"typ",ar:"تيفود الطيور",en:"Fowl Typhoid (S. Gallinarum)",cls:"بكتيري",aMin:28,aMax:999,
    test:"عزل S. Gallinarum + اختبار التلازن المصلي",
    w:{lv_bronze:3,ts_nodules:2,ts_orchitis:1,lv_green:2,lv_white_spots:2,sp_enlarged:2,ov_regression:2,ov_misshapen_discolored:3,cc_anemic:2,lv_necrotic_foci:1,lv_hepatomegaly:1,sp_necrotic:1,ht_hemorrhage:1,ov_peritonitis:1,od_salpingitis:1,ht_nodules:1,cn_wasting:1,cs_greenish_diarrhea:1,cs_diarrhea:1,pt_fibrin:1}},
@@ -1182,7 +1220,7 @@ const DISEASES = [
    w:{ln_pneumonia:3,as_sacculitis:2,ln_consolidation:1,hd_facial_edema:2,cs_nasal_discharge:2,cs_sneezing:1,cs_drop_production:1,egg_pale_weak_shell:1}},
   {id:"myc",ar:"الميكوبلازما / CRD",en:"Mycoplasmosis (MG)",cls:"بكتيري",aMin:0,aMax:999,
    test:"HI / ELISA + PCR لـ M. gallisepticum",
-   w:{as_foamy:3,as_sacculitis:2,as_cloudiness:2,as_thickening:2,cs_rales:2,hd_ocular_froth:2,tr_catarrh:1,cs_cough:1,cs_sneezing:1,hd_conjunctivitis:1,ln_pneumonia:1,od_salpingitis:1,nb_sinusitis:1,cs_drop_production:1}},
+   w:{as_foamy:3,as_sacculitis:2,as_cloudiness:2,as_thickening:2,cs_rales:2,hd_ocular_froth:2,cs_nasal_discharge:2,tr_catarrh:1,cs_cough:1,cs_sneezing:1,cs_nasal_watery:1,hd_conjunctivitis:1,ln_pneumonia:1,od_salpingitis:1,nb_sinusitis:1,cs_drop_production:1}},
   {id:"nec",ar:"الالتهاب المعوي النخري",en:"Necrotic Enteritis",cls:"بكتيري",aMin:14,aMax:42,
    test:"مسحة بطانة (قضبان Gram+) + عزل C. perfringens",
    w:{ji_fibrinonecrotic:3,ji_ballooning:2,du_necrosis:1,lv_necrotic_foci:1,lv_perihep:1,cs_sudden_death:1,cs_brown_diarrhea_undigested:3,cs_litter_pecking:3,cs_orange_diarrhea:2,cs_brown_watery_diarrhea:2,cs_brown_diarrhea:1,cs_diarrhea:1}},
@@ -1201,19 +1239,19 @@ const DISEASES = [
 
   {id:"nd",ar:"النيوكاسل الحاد (vvND)",en:"Velogenic Newcastle Disease",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR + HI (NDV) + العزل الفيروسي",
-   w:{pv_gland_tip_hem:3,ji_boutons:3,ts_regression:1,ct_hemorrhage:3,cs_nervous:3,cs_drop_production:3,cs_egg_quality:1,ov_regression:3,sp_necrotic:2,sp_white_necrotic:2,cs_greenish_diarrhea:2,tr_hemorrhage:1,tr_catarrh:1,tr_congestion:1,sp_mottled:1,du_hemorrhage:1,ji_hemorrhagic:1,ht_myocarditis:1,gz_hemorrhage:1,cs_sudden_death:1,ct_enlarged:1,ct_necrosis:1,od_atrophy:1,ov_peritonitis:1,hd_conjunctivitis:1,hd_facial_edema:1,cs_diarrhea:1,cs_dyspnea:1,cs_sneezing:1,egg_white_unexpected:2,egg_pale_weak_shell:1,egg_wind_egg:1}},
+   w:{pv_gland_tip_hem:3,ji_boutons:3,ts_regression:1,ct_hemorrhage:3,cs_nervous:3,cs_drop_production:3,cs_egg_quality:1,ov_regression:3,sp_necrotic:2,sp_white_necrotic:2,cs_greenish_diarrhea:2,tr_hemorrhage:1,tr_catarrh:1,tr_congestion:1,sp_mottled:1,du_hemorrhage:1,ji_hemorrhagic:1,ht_myocarditis:1,gz_hemorrhage:1,cs_sudden_death:1,ct_enlarged:1,ct_necrosis:1,od_atrophy:1,ov_peritonitis:1,hd_conjunctivitis:1,hd_facial_edema:1,cs_diarrhea:1,cs_dyspnea:1,cs_sneezing:1,cs_nasal_discharge:1,egg_white_unexpected:2,egg_pale_weak_shell:1,egg_wind_egg:1}},
   {id:"ai",ar:"إنفلونزا الطيور عالية الضراوة (H5 HPAI)",en:"High-Path Avian Influenza (H5)",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR (H5/H7) — يستوجب الإبلاغ الفوري للجهات الرسمية",
-   w:{hd_cyanosis:3,pn_necrosis:3,ts_hemorrhage:2,ts_regression:1,cc_cyanotic:2,pn_hemorrhage:2,ht_hemorrhage:2,pv_gland_tip_hem:2,ji_boutons:2,ln_hemorrhage:2,tr_hemorrhage:2,cs_sudden_death:2,ov_regression:2,cs_drop_production:2,pt_hemorrhage:2,pt_fat_petechiae:3,hd_facial_edema:2,ov_hemorrhage:2,ov_congest_hrg:2,ov_rupture:1,ov_peritonitis:1,hd_conjunctivitis:1,lv_necrotic_foci:1,kd_necrotic:1,ln_edema:1,ln_congestion:1,kd_congested:1,kd_hemorrhage:1,sp_hemorrhage:1,sp_necrotic:1,sp_necro_hrg:1,pn_mottled:1,tm_cyanosis:1,th_hemorrhage:1,gz_hemorrhage:1,cs_dyspnea:1,egg_pale_weak_shell:1,egg_wind_egg:1,egg_watery_albumen:1}},
+   w:{hd_cyanosis:3,pn_necrosis:3,ts_hemorrhage:2,ts_regression:1,cc_cyanotic:2,pn_hemorrhage:2,ht_hemorrhage:2,pv_gland_tip_hem:2,ji_boutons:2,ln_hemorrhage:2,tr_hemorrhage:2,cs_sudden_death:2,ov_regression:2,cs_drop_production:2,pt_hemorrhage:2,pt_fat_petechiae:3,hd_facial_edema:2,ov_hemorrhage:2,ov_congest_hrg:2,cs_nasal_bloody:1,cs_nasal_discharge:1,ov_rupture:1,ov_peritonitis:1,hd_conjunctivitis:1,lv_necrotic_foci:1,kd_necrotic:1,ln_edema:1,ln_congestion:1,kd_congested:1,kd_hemorrhage:1,sp_hemorrhage:1,sp_necrotic:1,sp_necro_hrg:1,pn_mottled:1,tm_cyanosis:1,th_hemorrhage:1,gz_hemorrhage:1,cs_dyspnea:1,egg_pale_weak_shell:1,egg_wind_egg:1,egg_watery_albumen:1}},
   {id:"lpai",ar:"إنفلونزا الطيور H9 (منخفضة الضراوة)",en:"Low-Path Avian Influenza (H9)",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR (H9) + عزل — وغالباً مصحوبة بعدوى E. coli ثانوية",
    w:{sp_necro_hrg:3,ts_regression:1,cs_drop_production:2,pt_hemorrhage:2,cs_egg_quality:1,od_salpingitis:2,od_atrophy:2,tr_hemorrhage:1,as_yellow_caseous:1,as_sacculitis:1,sp_hemorrhage:1,tr_catarrh:1,cs_dyspnea:1,cs_sneezing:1,cs_rales:1,ln_congestion:1,ln_pneumonia:1,kd_swollen:1,pn_mottled:1,ov_regression:1,ov_peritonitis:1,cc_cyanotic:1,cc_congested:1,hd_conjunctivitis:1,nb_sinusitis:1,tr_bifurcation:1,lg_lameness:1,cs_white_watery:1}},
   {id:"ib",ar:"الالتهاب الشعبي المعدي",en:"Infectious Bronchitis",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR (IBV) + HI / ELISA",
-   w:{tr_bifurcation:3,kd_nephritis:3,ts_regression:1,kd_urate:3,kd_swollen:2,kd_enlarged:2,ur_distended:2,ur_urate:2,ur_white_casts:2,od_atrophy:2,cs_drop_production:2,cs_egg_quality:2,od_cystic:3,tr_catarrh:1,cs_rales:1,cs_sneezing:1,cs_cough:1,cs_dyspnea:1,ln_congestion:1,tr_congestion:1,kd_mottled:1,cn_dehydration:1,od_egg_retention:2,od_penguin_stance:3,egg_pimples:2,egg_membranous:1,ov_regression:1,ov_congest_hrg:1,egg_pale_weak_shell:2,egg_wind_egg:1,egg_watery_albumen:2}},
+   w:{tr_bifurcation:3,kd_nephritis:3,ts_regression:1,kd_urate:3,kd_swollen:2,kd_enlarged:2,ur_distended:2,ur_urate:2,ur_white_casts:2,od_atrophy:2,cs_drop_production:2,cs_egg_quality:2,od_cystic:3,tr_catarrh:1,cs_rales:1,cs_sneezing:1,cs_cough:1,cs_dyspnea:1,cs_nasal_discharge:1,ln_congestion:1,tr_congestion:1,kd_mottled:1,cn_dehydration:1,od_egg_retention:2,od_penguin_stance:3,egg_pimples:2,egg_membranous:1,ov_regression:1,ov_congest_hrg:1,egg_pale_weak_shell:2,egg_wind_egg:1,egg_watery_albumen:2}},
   {id:"ilt",ar:"الالتهاب الحنجري القصبي",en:"Infectious Laryngotracheitis",cls:"فيروسي",aMin:21,aMax:999,
    test:"PCR (ILTV) + histo (أجسام اندماج داخل نووية)",
-   w:{tr_hemorrhage:3,cs_dyspnea:2,cs_cough:2,hd_conjunctivitis:2,nb_sinusitis:2,tr_caseous_plug:1,tr_fibrin:1,tr_thickened:1,tr_congestion:1,hd_ocular_catarrh:1,tr_catarrh:1,cs_sneezing:1,egg_pale_weak_shell:1}},
+   w:{tr_hemorrhage:3,cs_nasal_bloody:2,cs_dyspnea:2,cs_cough:2,hd_conjunctivitis:2,nb_sinusitis:2,tr_caseous_plug:1,tr_fibrin:1,tr_thickened:1,tr_congestion:1,hd_ocular_catarrh:1,tr_catarrh:1,cs_sneezing:1,egg_pale_weak_shell:1}},
   {id:"ibd",ar:"الجامبورو",en:"Infectious Bursal Disease",cls:"فيروسي",aMin:14,aMax:49,
    test:"PCR (IBDV) + histo لجراب فابريشيوس — السلالات شديدة الضراوة/العصيّة على المناعة (vvIBDV/nephropathogenic) ممكن تعمل التهاب كلوي واضح وترسب يوريت بجانب الآفة الأساسية بالجراب",
    w:{bu_enlarged:3,bu_hemorrhage:3,tm_hemorrhage:3,bu_gelatinous:3,bm_hemorrhage:3,bu_edematous:2,cn_dehydration:2,ct_necrosis:2,kd_nephritis:2,kd_urate:1,bu_atrophied:1,bu_caseous:1,bu_necrosis:1,th_atrophied:1,th_hemorrhage:1,pv_gland_tip_hem:1,bm_dehydration:1,cs_white_watery:1,sp_enlarged:1,ct_caseous:1}},
@@ -1309,10 +1347,10 @@ const DISEASES = [
    w:{nt_heat_stress:3,cs_dyspnea:2,cn_ascites:1,cs_sudden_death:1,nt_hock_burn:1,ht_enlargement:2,ln_congestion:2,ln_edema:1,lv_fatty:1,kd_hemorrhage:1,kd_nephrosis:1,ur_pseudobladder:1}},
   {id:"amm",ar:"التسمم بالأمونيا الزائدة (سوء التهوية)",en:"Ammonia Toxicity (Poor Ventilation)",cls:"بيئي",aMin:0,aMax:999,
    test:"قياس مباشر لتركيز الأمونيا بالعنبر (يفضَّل أقل من 25ppm) + تقييم التهوية وجفاف الفرشة — الارتفاع المزمن يهيّئ لعدوى تنفسية ثانوية",
-   w:{hd_conjunctivitis:2,hd_corneal_ulcer:2,tr_thickened:1,tr_congestion:1,cs_dyspnea:1}},
+   w:{hd_conjunctivitis:2,hd_corneal_ulcer:2,cs_nasal_watery:2,tr_thickened:1,tr_congestion:1,cs_dyspnea:1}},
   {id:"co",ar:"التسمم بأول أكسيد الكربون",en:"Carbon Monoxide (CO) Poisoning",cls:"سُمّي/بيئي",aMin:0,aMax:999,
    test:"تشخيص حقلي (سوء ضبط سخانات التدفئة + ضعف تهوية) — يتأكد بتحليل طيفي للدم عند الاشتباه. المصدر غالباً سخان يعمل باحتراق ناقص مع نقص أكسجين وتهوية ضعيفة، وقد يسبب نفوق مفاجئ ومرتفع خلال ساعات قليلة.",
-   w:{cc_cherry_red:3,hd_cyanosis:2,cs_sudden_death:2}},
+   w:{cc_cherry_red:3,hd_cyanosis:2,cs_nasal_bloody:2,cs_sudden_death:2}},
   {id:"saltx",ar:"التسمم بالملح (زيادة كلوريد الصوديوم)",en:"Salt Toxicosis (Excess Sodium Chloride)",cls:"سُمّي",aMin:0,aMax:999,
    test:"مراجعة نسبة الملح/الصوديوم بالعليقة ومصدر مياه الشرب — الجرعة المميتة التقريبية ~4 جم/كجم من وزن الجسم. عطش شديد مصاحب مع ضرر كلوي تنكّسي (نيفروسيس) من زيادة الحمل الأسموزي على الكلى.",
    w:{cn_ascites:2,ht_hydropericardium:2,ht_enlargement:1,cs_diarrhea:1,cs_nervous:1,cs_leg_paralysis:1,cs_drop_production:1,kd_nephrosis:2}},
@@ -2464,7 +2502,7 @@ function renderClientDetail(id){
         const meds=v.medications||[];
         const RESP_LABEL=RESP_LABEL_FULL;
         return `<div class="visititem">
-          <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':'<span class="chip closed">مزرعة</span>'}${(v.sampleAlive||v.sampleDead)?` <span class="chip visit">🧪 عينة ${((v.sampleAlive||0)+(v.sampleDead||0))}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}</span>`:''} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
+          <div class="ci-s"><b>${v.date}</b> ${v.visitLocation==='lab'?'<span class="chip closed">معمل</span>':v.visitLocation==='call'?'<span class="chip visit">📞 تليفونية</span>':'<span class="chip closed">مزرعة</span>'}${(v.sampleAlive||v.sampleDead)?` <span class="chip visit">🧪 عينة ${((v.sampleAlive||0)+(v.sampleDead||0))}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}</span>`:''} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}
             ${v.complaint?' · '+v.complaint:''}</div>
           ${confirmed?`<div class="small">✅ التشخيص المؤكَّد: <b>${confirmed}</b></div>`:(top?`<div class="small">🔬 المشتبه الأول: <b>${top.ar}</b> (${top.score})${dx.composites&&dx.composites.length?' · '+dx.composites.join('، '):''}</div>`:'')}
           ${meds.length?`<div class="small">💊 ${meds.map(m=>`${formatMedShort(m, v.waterEstimateL)}${m.response?' ['+(RESP_LABEL[m.response]||m.response)+']':''}`).join('، ')}</div>`:''}
@@ -2841,7 +2879,7 @@ async function exportClientReportPDF(evt){
         const confirmed=confirmedDxLabels(v);
         const meds=v.medications||[];
         const sampleTxt=(v.sampleAlive||v.sampleDead)?` [عينة ${(v.sampleAlive||0)+(v.sampleDead||0)}${v.sampleAlive?' — حية '+v.sampleAlive:''}${v.sampleDead?' — نافقة '+v.sampleDead:''}]`:'';
-        line(`${v.date} — ${v.visitLocation==='lab'?'معمل':'مزرعة'}${sampleTxt} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}${v.complaint?' · '+v.complaint:''}`, {size:16, bold:true, gap:5});
+        line(`${v.date} — ${v.visitLocation==='lab'?'معمل':v.visitLocation==='call'?'📞 متابعة تليفونية':'مزرعة'}${sampleTxt} — عمر ${v.ageDays??'—'} يوم · عدد ${v.birdCount??'—'}${v.complaint?' · '+v.complaint:''}`, {size:16, bold:true, gap:5});
         if(confirmed) line(`✅ التشخيص المؤكَّد: ${confirmed}`, {size:15, gap:3, color:"#1c6b45"});
         else if(top) line(`🔬 المشتبه الأول: ${top.ar} (${top.score})`, {size:15, gap:3});
         if(meds.length) line(`💊 ${meds.map(m=>formatMedShort(m)).join('، ')}`, {size:15, gap:3});
@@ -2926,7 +2964,7 @@ async function exportFullVisitReportPDF(visitId,includeDxDetail){
 
     // بيانات الزيارة الأساسية
     heading("بيانات الزيارة");
-    line(`التاريخ: ${v.date||'—'}  ·  المكان: ${v.visitLocation==='lab'?'معمل':'مزرعة'}  ·  العمر: ${v.ageDays??'—'} يوم  ·  عدد الطيور: ${v.birdCount??'—'}`);
+    line(`التاريخ: ${v.date||'—'}  ·  المكان: ${v.visitLocation==='lab'?'معمل':v.visitLocation==='call'?'📞 متابعة تليفونية':'مزرعة'}  ·  العمر: ${v.ageDays??'—'} يوم  ·  عدد الطيور: ${v.birdCount??'—'}`);
     if(v.complaint) line(`الشكوى الرئيسية: ${v.complaint}`);
     if(v.sampleAlive||v.sampleDead) line(`عينة الفحص: حية ${v.sampleAlive||0} — نافقة ${v.sampleDead||0}`);
     divider();
