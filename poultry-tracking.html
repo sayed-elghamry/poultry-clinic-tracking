@@ -318,7 +318,7 @@
       <hr class="divider">
       <h3>بيانات الزيارة / الحالة</h3>
       <div class="grid3">
-        <div class="field"><label>الشكوى الرئيسية</label><input id="v_complaint"></div>
+        <div class="field"><label>🗣️ الشكوى الرئيسية</label><input id="v_complaint"></div>
         <div class="field"><label>عدد العينات الحية (فحص إكلينيكي)</label><input id="v_sample_alive" type="number" min="0" inputmode="numeric" oninput="updateSampleTotal()"></div>
         <div class="field"><label>عدد العينات النافقة (تشريح)</label><input id="v_sample_dead" type="number" min="0" inputmode="numeric" oninput="updateSampleTotal()"></div>
         <div class="field"><label>إجمالي العينة</label><input id="v_sample_total" disabled></div>
@@ -421,6 +421,12 @@
           </select>
           <div class="small" id="peckHint" style="margin-top:4px;color:var(--accent)"></div>
         </div>
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="small" style="color:#777;margin-bottom:4px">ملاحظات ميدانية مخصّصة (تضيفها بنفسك — زي موت العينة أو شكل توزيع الفراخ)</div>
+        <div id="customFieldSignals"></div>
+        <button class="btn sm" type="button" onclick="addCustomFieldSignal()">+ إضافة ملاحظة ميدانية مخصّصة</button>
       </div>
 
       <h4 style="margin:12px 0 4px">التاريخ العلاجي والوقائي</h4>
@@ -858,6 +864,7 @@ const LESIONS = [
   ["cs_dyspnea","cs","صعوبة تنفس / لهاث / فتح المنقار","Dyspnea / gasping"],
   ["cs_rales","cs","خرخرة / صفير بالصدر","Respiratory rales / snicking"],
   ["cs_diarrhea","cs","إسهال","Diarrhea"],
+  ["cs_greasy_droppings","cs","براز دهني لامع (steatorrhea) — سوء هضم دهون","Greasy, shiny droppings (steatorrhea) — fat malabsorption"],
   ["cs_brown_diarrhea","cs","إسهال بني","Brown diarrhea"],
   ["cs_brown_diarrhea_undigested","cs","إسهال بني بعلف غير مهضوم","Brown diarrhea with undigested feed"],
   ["cs_brown_watery_diarrhea","cs","إسهال بني سائل","Watery brown diarrhea"],
@@ -872,6 +879,10 @@ const LESIONS = [
   ["cs_shell_color_loss","cs","فقدان لون قشرة البيض","Loss of eggshell pigmentation"],
   ["cs_foul_odor","cs","رائحة كريهة (حالات مزمنة/مختلطة)","Foul odor (chronic/mixed infections)"],
   ["cs_nervous","cs","أعراض عصبية (التواء رقبة / شلل)","Nervous signs"],
+  ["cs_lameness","cs","عرج بإحدى الرجلين أو الاثنين","Lameness in one or both legs"],
+  ["cs_fever","cs","سخونة شديدة ملموسة بجسم الطائر","Marked palpable fever/body heat"],
+  ["cs_recumbent_reluctant","cs","الطائر بارك على الأرض ولا يتحرك أو يتحرك بصعوبة عند المرور بينهم","Bird squatting/recumbent, not moving or moving with difficulty when approached"],
+  ["cs_limberneck","cs","ارتخاء كامل بالرقبة (Limberneck) مع شلل رخو تصاعدي من الأرجل للأجنحة ثم الجفن الداخلي والرقبة","Complete flaccid neck (limberneck) with ascending flaccid paralysis: legs → wings → inner eyelid → neck"],
   ["cs_drop_production","cs","هبوط إنتاج البيض","Drop in egg production"],
   ["cs_sudden_death","cs","نفوق مفاجئ في طيور بحالة جيدة","Sudden death, good condition"],
   ["cs_leg_paralysis","cs","ضعف/شلل بالأرجل (ثنائي، مراحل متأخرة)","Bilateral leg weakness/paralysis (late stage)"],
@@ -891,6 +902,7 @@ const LESIONS = [
   ["hd_grey_eye","hd","قزحية رمادية / التهاب قزحية غير منتظم (Grey Eye)","Grey eye / irregular iris (lymphoid infiltration)"],
   ["hd_fungal_eye","hd","إفراز جبني تحت الغشاء الرامش / عكارة قرنية (فطري)","Caseous plaque under nictitating membrane / corneal opacity"],
   ["hd_corneal_ulcer","hd","تقرح بالقرنية — من علامات التعرض المزمن لارتفاع الأمونيا","Corneal ulceration — sign of chronic high-ammonia exposure"],
+  ["hd_comb_gangrene","hd","حويصلات/تقرحات بالمنقار والعرف والداليات والأصابع، مع غرغرينا وضمور/تشوّه مزمن للعرف والداليات (نقص تروية وعائي)","Vesicles/ulcers on beak, comb, wattles, toes, with gangrene and chronic comb/wattle atrophy-disfigurement (vascular ischemia)"],
   ["hd_harderian_abnormal","hd","تغيّر لون/حجم الغدة الهاردية (غدة مناعية جنب العين) — يستدعي المتابعة، لا يوجد ربط مرضي محدد بعد","Abnormal color/size of the Harderian gland (immune gland near the eye) — worth noting, no confirmed disease-specific link yet"],
 
   ["nb_blockage","nb","انسداد الأنف","Nasal blockage"],
@@ -904,6 +916,7 @@ const LESIONS = [
   ["sk_ruffled","sk","ريش منفوش","Ruffled feathers"],
   ["sk_plumage_untidy","sk","ريش غير مرتب ومتسخ مع فقد ريش (يُؤكل المتساقط منه) — علامة التهاب معوي مزمن بالبياض","Untidy, soiled plumage with feather loss (dropped feathers eaten) — chronic enteritis sign in layers"],
   ["sk_cellulitis","sk","سيلوليت / التهاب النسيج تحت الجلد","Cellulitis"],
+  ["sk_gangrenous_patches","sk","بقع جلدية أرجوانية داكنة إلى خضراء رطبة (غرغرينية) بالصدر/البطن/الجناح/الفخذ، مع انتفاخ غازي ونزف تحت الجلد","Dark purple-to-green weepy gangrenous skin patches on breast/abdomen/wing/thigh, with subcutaneous gas/hemorrhage"],
   ["sk_follicle_tumor","sk","تضخم بصيلات الريش بأورام — العرض الجلدي لمرض ماريك، أوضح ما يكون قبل الذبح بالتسمين","Enlarged tumorous feather follicles — cutaneous form of Marek's disease, most evident pre-slaughter in broilers"],
 
   ["lg_footpad","lg","تقرح وسادة القدم","Footpad dermatitis"],
@@ -956,6 +969,7 @@ const LESIONS = [
 
   ["lv_hepatomegaly","lv","تضخم الكبد","Hepatomegaly"],
   ["lv_bronze","lv","لون برونزي","Bronze discoloration"],
+  ["lv_reticulated_yellow","lv","كبد أصفر إلى عسلي بنمط شبكي (متعرّق) على السطح المحفظي","Yellow-to-ocher liver with reticulated pattern on capsular surface"],
   ["lv_green","lv","لون أخضر","Green discoloration"],
   ["lv_white_spots","lv","نقط / بؤر بيضاء دبوسية","White spots (pinpoint)"],
   ["lv_necrotic_foci","lv","بؤر نخر","Necrotic foci"],
@@ -1052,6 +1066,7 @@ const LESIONS = [
   ["ji_fibrinonecrotic","ji","التهاب فيبريني نخري (بطانة منشفة)","Fibrinonecrotic enteritis"],
   ["ji_hemorrhagic","ji","التهاب معوي نزفي","Hemorrhagic enteritis"],
   ["ji_boutons","ji","تقرحات زرارية / نزفية (boutons)","Button ulcers"],
+  ["ji_round_yellow_ulcer","ji","تقرحات كبيرة مستديرة صفراء محاطة بهالة نزفية، تتحد وتُغطى بأغشية دفتيرية","Large round yellow ulcers surrounded by hemorrhagic halo, coalescing, covered by diphtheritic membranes"],
   ["ji_ballooning","ji","انتفاخ الأمعاء بالغاز","Ballooning"],
   ["ji_orange_mucus","ji","مخاط برتقالي + سماكة الجدار","Orange mucus + thick wall"],
   ["ji_catarrhal","ji","التهاب نزلي","Catarrhal enteritis"],
@@ -1087,6 +1102,7 @@ const LESIONS = [
   ["tm_cyanosis","tm","ازرقاق العضلة","Cyanosis"],
 
   ["bmw_pale","bmw","شحوب نخاع العظم (يُفتح عظم الفخذ للفحص)","Pale bone marrow (open femur to examine)"],
+  ["bmw_yellow","bmw","نخاع عظم أصفر اللون (تأثير إشعاعي كيميائي)","Yellow bone marrow discoloration (radiomimetic injury)"],
   ["bmw_hypoplastic","bmw","نقص تنسج النخاع (نخاع مائي/هلامي المظهر بدلاً من الأحمر الطبيعي)","Hypoplastic marrow (watery/gelatinous appearance instead of normal red)"],
 
   ["hj_arthritis","hj","التهاب مفصلي","Arthritis"],
@@ -1163,6 +1179,9 @@ const LESIONS = [
   ["nt_hock_burn","nt","حروق العرقوب (تلامس الفرشة)","Hock burn (litter contact necrosis)"],
   ["nt_heat_stress","nt","لهاث شديد وانتشار الأجنحة (إجهاد حراري)","Panting, wings spread (heat stress)"],
   ["nt_pale_muscle_lines","nt","خطوط بيضاء موازية بعضلة الصدر (ضمور عضلي)","White striations in breast muscle (muscular dystrophy)"],
+  ["nt_shank_pale","nt","شحوب الأرجل والجلد (فقد تصبغ كاروتيني)","Pale shanks/skin (loss of carotenoid pigmentation)"],
+  ["nt_feather_malform","nt","تشوّه/ضيق أعمدة الريش النامي (إصابة إشعاعية كيميائية للحُليمة)","Malformed/narrowed growing feather barbs (radiomimetic follicle injury)"],
+  ["nt_bruising","nt","كدمات/نزوف سهلة عند المناولة أو التصنيع (هشاشة شعيرية)","Easy bruising at handling/processing (capillary fragility)"],
 
   /* ============ DUCK-SPECIFIC LESIONS START (dk_) ============ */
 // أعراض عصبية/سلوكية مميزة للبط — غير موجودة بنفس الدقة في قائمة الدواجن
@@ -1190,6 +1209,8 @@ const LESIONS = [
   // أقدام مكففة
   ["dk_wf_erosion","dk_wf","تآكل/تقرح بالغشاء بين الأصابع","Erosion/ulceration of the interdigital web"],
   ["dk_wf_bumblefoot","dk_wf","تورم والتهاب صديدي بباطن القدم (يشبه Bumblefoot الدجاج)","Swollen, purulent plantar lesion (bumblefoot-like)"],
+  ["dk_leg_purple","dk_wf","تلوّن أرجواني بالأرجل والأقدام","Purple discoloration of legs/feet"],
+  ["dk_lv_yellowgreen_atrophy","lv","كبد شاحب أصفر-أخضر مع ضمور (الفص الأيسر أكثر تأثرًا) — خاص بالبط","Pale yellow-green atrophic liver, left lobe more affected — duck-specific"],
   // ريش (نمو غير طبيعي — سيركو فيرس)
   ["dk_sk_feather_dysplasia","sk","تشوّهات نمو الريش (قصير/ملتوي/غير مكتمل) في صغار البط","Feather growth abnormalities (short/curled/incomplete) in young ducklings"],
   // إنتاج/تفريخ (أمهات)
@@ -1224,6 +1245,15 @@ const DISEASES = [
   {id:"nec",ar:"الالتهاب المعوي النخري",en:"Necrotic Enteritis",cls:"بكتيري",aMin:14,aMax:42,
    test:"مسحة بطانة (قضبان Gram+) + عزل C. perfringens",
    w:{ji_fibrinonecrotic:3,ji_ballooning:2,du_necrosis:1,lv_necrotic_foci:1,lv_perihep:1,cs_sudden_death:1,cs_brown_diarrhea_undigested:3,cs_litter_pecking:3,cs_orange_diarrhea:2,cs_brown_watery_diarrhea:2,cs_brown_diarrhea:1,cs_diarrhea:1}},
+  {id:"ue",ar:"الالتهاب المعوي التقرحي (كولينم)",en:"Ulcerative Enteritis (C. colinum)",cls:"بكتيري",aMin:14,aMax:90,
+   test:"عزل/PCR لـ C. colinum — يُفضَّل من الكبد (أنقى من الأمعاء) — عامل مؤهِّل شائع: عدوى كوكسيديا سابقة أو كبت مناعي (جامبورو/أنيميا الدجاج). الاسم الشائع 'مرض السمان' لأنه الأشيع فيه، لكنه يصيب الدجاج والرومي أيضًا",
+   w:{ji_round_yellow_ulcer:3,ce_ulcer:2,ji_fibrinonecrotic:2,lv_necrotic_foci:2,sp_hemorrhage:1,sp_enlarged:1,cs_diarrhea:1,cn_wasting:1}},
+  {id:"bot",ar:"البوتيوليزم (التسمم الوشيقي)",en:"Botulism",cls:"سُمّي/بكتيري",aMin:0,aMax:999,
+   test:"⚠️ لا توجد آفات تشريحية مميزة عادةً — التشخيص يعتمد أساسًا على النمط السريري (شلل رخو تصاعدي: أرجل ← أجنحة ← جفن داخلي ← رقبة) + غياب آفات تفسّر الحالة. السم المسؤول (BoNT) نوع C غالبًا في الدواجن، والسم الفسيفسائي المهجّن C/D أعلى سُمّية من الأنواع الصافية. نفوق مرتفع محتمل (حتى 40% في قطعان التسمين). التأكيد المعملي: قياس السموم بالمصل بواسطة اختبار الفئران الحيوي (المعيار الذهبي). فرّق عن: ماريك، النيوكاسل، التهاب الدماغ الفيروسي، كوليرا الطيور، تسمم كيميائي/دوائي، مشاكل هيكلية بالأطراف",
+   w:{cs_limberneck:3,cs_leg_paralysis:2,cs_sudden_death:2,cs_nervous:1,cn_wasting:1}},
+  {id:"gd",ar:"التهاب الجلد الغرغريني (GD)",en:"Gangrenous Dermatitis",cls:"بكتيري",aMin:0,aMax:999,
+   test:"عزل C. septicum و/أو C. perfringens type A (± S. aureus) من الآفات — عوامل مؤهِّلة شائعة: كبت مناعي (جامبورو، أنيميا الدجاج، ريتيكولوإندوثيليوزس، ريوفيرس، أو التهاب الكبد الجسيمي بالأدينوفيرس) + رطوبة فرشة عالية + خدوش جلدية. نفوق مفاجئ عالٍ مع اعتلال منخفض هو المؤشر الأول عادةً",
+   w:{sk_gangrenous_patches:3,cs_sudden_death:2,lv_necrotic_foci:1,bu_atrophied:1,sp_enlarged:1,cn_wasting:1}},
   {id:"cde",ar:"الالتهاب المعوي المزمن بالإثني عشر (بياض)",en:"Chronic Duodenal Enteritis (layers)",cls:"سبب غير محدد بدقة",aMin:140,aMax:220,birdTypes:["layer","breeder"],
    test:"تشخيص حقلي — الصورة المميزة: ريش غير مرتب مع فقد ريش + تباطؤ الإنتاج حوالي الأسبوع 25 + براز رخو. فحص الإثني عشر (أول 20-30 سم): محتوى زائد رخو بلون غير طبيعي، وأحيانًا آفات نخرية رمادية داكنة قد ينزف بعضها. السبب غير محدد بدقة، لكن الآفات ترتبط غالباً بـ Clostridium spp.",
    w:{du_necrosis:2,du_catarrh:2,sk_plumage_untidy:2,du_thickened:1,cs_drop_production:1,cs_diarrhea:1}},
@@ -1232,17 +1262,17 @@ const DISEASES = [
    w:{fh_osteomyelitis:3,hj_arthritis:3,fh_necrosis:2,hj_caseous:2,hj_swelling:2,lg_joint_swelling:2,lg_footpad:1,hj_synovitis:1,lv_white_spots:1,spn_spondylitis:2}},
   {id:"kb",ar:"انزلاق الفقرة الصدرية (Kinky Back)",en:"Spondylolisthesis (Kinky Back)",cls:"غير معدي/تطوري",aMin:14,aMax:56,
    test:"تشخيص حقلي (طائر يقعد على عرقوبه ولا يقدر يقف، رجل أو الاتنين مرفوعة شوية عن الأرض) + تشريح العمود الفقري للتأكيد — شائع في التسمين 3-6 أسابيع، سبب ميكانيكي غير معدٍ (دوران الفقرة T4)، يُفرَّق عن Spondylitis المعدية بغياب التقيّح",
-   w:{spn_t4_rotation:3,cs_leg_paralysis:2,lg_lameness:1}},
+   w:{spn_t4_rotation:3,cs_leg_paralysis:2,cs_lameness:2,lg_lameness:1}},
   {id:"ms",ar:"الميكوبلازما الزليلية (MS)",en:"Mycoplasma synoviae",cls:"بكتيري",aMin:14,aMax:999,
    test:"PCR + مصلي (MS) + مسحة سائل زليلي",
-   w:{hj_synovitis:3,hj_arthritis:2,hj_swelling:2,lg_joint_swelling:2,lg_lameness:2,hd_pale_comb:1,cs_egg_quality:1,lg_footpad:1,hj_caseous:1,as_sacculitis:1,as_foamy:1,egg_glassy_tip:3}},
+   w:{hj_synovitis:3,hj_arthritis:2,hj_swelling:2,cs_lameness:2,lg_joint_swelling:2,lg_lameness:2,hd_pale_comb:1,cs_egg_quality:1,lg_footpad:1,hj_caseous:1,as_sacculitis:1,as_foamy:1,egg_glassy_tip:3}},
 
   {id:"nd",ar:"النيوكاسل الحاد (vvND)",en:"Velogenic Newcastle Disease",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR + HI (NDV) + العزل الفيروسي",
-   w:{pv_gland_tip_hem:3,ji_boutons:3,ts_regression:1,ct_hemorrhage:3,cs_nervous:3,cs_drop_production:3,cs_egg_quality:1,ov_regression:3,sp_necrotic:2,sp_white_necrotic:2,cs_greenish_diarrhea:2,tr_hemorrhage:1,tr_catarrh:1,tr_congestion:1,sp_mottled:1,du_hemorrhage:1,ji_hemorrhagic:1,ht_myocarditis:1,gz_hemorrhage:1,cs_sudden_death:1,ct_enlarged:1,ct_necrosis:1,od_atrophy:1,ov_peritonitis:1,hd_conjunctivitis:1,hd_facial_edema:1,cs_diarrhea:1,cs_dyspnea:1,cs_sneezing:1,cs_nasal_discharge:1,egg_white_unexpected:2,egg_pale_weak_shell:1,egg_wind_egg:1}},
+   w:{pv_gland_tip_hem:3,ji_boutons:3,ts_regression:1,ct_hemorrhage:3,cs_nervous:3,cs_drop_production:3,cs_fever:2,cs_recumbent_reluctant:2,cs_egg_quality:1,ov_regression:3,sp_necrotic:2,sp_white_necrotic:2,cs_greenish_diarrhea:2,tr_hemorrhage:1,tr_catarrh:1,tr_congestion:1,sp_mottled:1,du_hemorrhage:1,ji_hemorrhagic:1,ht_myocarditis:1,gz_hemorrhage:1,cs_sudden_death:1,ct_enlarged:1,ct_necrosis:1,od_atrophy:1,ov_peritonitis:1,hd_conjunctivitis:1,hd_facial_edema:1,cs_diarrhea:1,cs_dyspnea:1,cs_sneezing:1,cs_nasal_discharge:1,egg_white_unexpected:2,egg_pale_weak_shell:1,egg_wind_egg:1}},
   {id:"ai",ar:"إنفلونزا الطيور عالية الضراوة (H5 HPAI)",en:"High-Path Avian Influenza (H5)",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR (H5/H7) — يستوجب الإبلاغ الفوري للجهات الرسمية",
-   w:{hd_cyanosis:3,pn_necrosis:3,ts_hemorrhage:2,ts_regression:1,cc_cyanotic:2,pn_hemorrhage:2,ht_hemorrhage:2,pv_gland_tip_hem:2,ji_boutons:2,ln_hemorrhage:2,tr_hemorrhage:2,cs_sudden_death:2,ov_regression:2,cs_drop_production:2,pt_hemorrhage:2,pt_fat_petechiae:3,hd_facial_edema:2,ov_hemorrhage:2,ov_congest_hrg:2,cs_nasal_bloody:1,cs_nasal_discharge:1,ov_rupture:1,ov_peritonitis:1,hd_conjunctivitis:1,lv_necrotic_foci:1,kd_necrotic:1,ln_edema:1,ln_congestion:1,kd_congested:1,kd_hemorrhage:1,sp_hemorrhage:1,sp_necrotic:1,sp_necro_hrg:1,pn_mottled:1,tm_cyanosis:1,th_hemorrhage:1,gz_hemorrhage:1,cs_dyspnea:1,egg_pale_weak_shell:1,egg_wind_egg:1,egg_watery_albumen:1}},
+   w:{hd_cyanosis:3,pn_necrosis:3,ts_hemorrhage:2,ts_regression:1,cc_cyanotic:2,pn_hemorrhage:2,ht_hemorrhage:2,pv_gland_tip_hem:2,ji_boutons:2,ln_hemorrhage:2,tr_hemorrhage:2,cs_sudden_death:2,cs_fever:2,cs_recumbent_reluctant:2,ov_regression:2,cs_drop_production:2,pt_hemorrhage:2,pt_fat_petechiae:3,hd_facial_edema:2,ov_hemorrhage:2,ov_congest_hrg:2,cs_nasal_bloody:1,cs_nasal_discharge:1,ov_rupture:1,ov_peritonitis:1,hd_conjunctivitis:1,lv_necrotic_foci:1,kd_necrotic:1,ln_edema:1,ln_congestion:1,kd_congested:1,kd_hemorrhage:1,sp_hemorrhage:1,sp_necrotic:1,sp_necro_hrg:1,pn_mottled:1,tm_cyanosis:1,th_hemorrhage:1,gz_hemorrhage:1,cs_dyspnea:1,egg_pale_weak_shell:1,egg_wind_egg:1,egg_watery_albumen:1}},
   {id:"lpai",ar:"إنفلونزا الطيور H9 (منخفضة الضراوة)",en:"Low-Path Avian Influenza (H9)",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR (H9) + عزل — وغالباً مصحوبة بعدوى E. coli ثانوية",
    w:{sp_necro_hrg:3,ts_regression:1,cs_drop_production:2,pt_hemorrhage:2,cs_egg_quality:1,od_salpingitis:2,od_atrophy:2,tr_hemorrhage:1,as_yellow_caseous:1,as_sacculitis:1,sp_hemorrhage:1,tr_catarrh:1,cs_dyspnea:1,cs_sneezing:1,cs_rales:1,ln_congestion:1,ln_pneumonia:1,kd_swollen:1,pn_mottled:1,ov_regression:1,ov_peritonitis:1,cc_cyanotic:1,cc_congested:1,hd_conjunctivitis:1,nb_sinusitis:1,tr_bifurcation:1,lg_lameness:1,cs_white_watery:1}},
@@ -1254,7 +1284,7 @@ const DISEASES = [
    w:{tr_hemorrhage:3,cs_nasal_bloody:2,cs_dyspnea:2,cs_cough:2,hd_conjunctivitis:2,nb_sinusitis:2,tr_caseous_plug:1,tr_fibrin:1,tr_thickened:1,tr_congestion:1,hd_ocular_catarrh:1,tr_catarrh:1,cs_sneezing:1,egg_pale_weak_shell:1}},
   {id:"ibd",ar:"الجامبورو",en:"Infectious Bursal Disease",cls:"فيروسي",aMin:14,aMax:49,
    test:"PCR (IBDV) + histo لجراب فابريشيوس — السلالات شديدة الضراوة/العصيّة على المناعة (vvIBDV/nephropathogenic) ممكن تعمل التهاب كلوي واضح وترسب يوريت بجانب الآفة الأساسية بالجراب",
-   w:{bu_enlarged:3,bu_hemorrhage:3,tm_hemorrhage:3,bu_gelatinous:3,bm_hemorrhage:3,bu_edematous:2,cn_dehydration:2,ct_necrosis:2,kd_nephritis:2,kd_urate:1,bu_atrophied:1,bu_caseous:1,bu_necrosis:1,th_atrophied:1,th_hemorrhage:1,pv_gland_tip_hem:1,bm_dehydration:1,cs_white_watery:1,sp_enlarged:1,ct_caseous:1}},
+   w:{bu_enlarged:3,bu_hemorrhage:3,tm_hemorrhage:3,bu_gelatinous:3,bm_hemorrhage:3,bu_edematous:2,cn_dehydration:2,ct_necrosis:2,kd_nephritis:2,cs_recumbent_reluctant:2,kd_urate:1,cs_fever:1,bu_atrophied:1,bu_caseous:1,bu_necrosis:1,th_atrophied:1,th_hemorrhage:1,pv_gland_tip_hem:1,bm_dehydration:1,cs_white_watery:1,sp_enlarged:1,ct_caseous:1}},
   {id:"cav",ar:"فقر الدم الفيروسي (فيروس أنيميا الدجاج)",en:"Chicken Anaemia Virus (CAV)",cls:"فيروسي",aMin:7,aMax:28,
    test:"PCR (CAV) + فحص دم (هيماتوكريت منخفض) — يُشتبه به خصوصاً مع عدوى مشتركة بالجامبورو (تُضخّم شراسته)، والنفوق غالباً بعمر 2-3 أسابيع بسبب عدوى ثانوية جرثومية/فطرية مصاحبة",
    w:{bmw_pale:3,bmw_hypoplastic:3,th_atrophied:2,kd_pale:2,bu_atrophied:1,sp_atrophied:1,lv_green:1,bm_hemorrhage:1,tm_hemorrhage:1,sk_cellulitis:1}},
@@ -1297,14 +1327,23 @@ const DISEASES = [
    test:"زرع فطري + histo (خيوط فطرية بالعقيدات)",
    w:{ln_fungal:3,pt_fungal_nodules:2,hd_fungal_eye:2,ln_necrotic_foci:2,ln_consolidation:1,ln_pneumonia:1,cs_dyspnea:1,hd_cyanosis:1,cs_nervous:1,cs_sudden_death:1}},
   {id:"afl",ar:"التسمم بالأفلاتوكسين",en:"Aflatoxicosis",cls:"سُمّي",aMin:0,aMax:999,
-   test:"تحليل العلف (ELISA / HPLC) للأفلاتوكسين",
-   w:{lv_fatty:2,lv_bile_duct:2,lv_hepatomegaly:1,lv_rupture:1,ht_hydropericardium:1,gz_erosion:1,gz_thin_koilin:3,gz_detached_koilin:3,cc_anemic:1,bm_pale:1,cn_wasting:1,kd_urate:1,pt_hemorrhage:1}},
+   test:"تحليل العلف (ELISA / HPLC) للأفلاتوكسين — الوصف الكبدي المميز: لون أصفر-عسلي بنمط شبكي على السطح المحفظي + نزف متعدد البؤر + بؤر بيضاء مع زيادة الدهون (Manual of Poultry Diseases)",
+   w:{lv_reticulated_yellow:3,lv_fatty:2,lv_bile_duct:2,lv_hemorrhage:2,nt_shank_pale:2,nt_bruising:2,lv_white_spots:1,lv_hepatomegaly:1,lv_rupture:1,ht_hydropericardium:1,gz_erosion:1,gz_thin_koilin:3,gz_detached_koilin:3,cc_anemic:1,bm_pale:1,cn_wasting:1,kd_urate:1,pt_hemorrhage:1,cs_greasy_droppings:1}},
   {id:"ochra",ar:"التسمم بالأوكراتوكسين",en:"Ochratoxicosis",cls:"سُمّي",aMin:0,aMax:999,
    test:"تحليل العلف (ELISA / HPLC) للأوكراتوكسين — تركيز على السمّية الكلوية",
    w:{kd_enlarged:3,kd_pale:3,kd_urate:2,ur_urate:2,kd_swollen:2,du_enteritis:1,kd_mottled:1,ur_distended:1,cn_wasting:2,cc_anemic:1,bm_pale:1,cs_white_diarrhea:1,gz_erosion:1}},
   {id:"t2",ar:"التسمم بالتريكوثيسينات (T-2)",en:"Trichothecene / T-2 Toxicosis",cls:"سُمّي",aMin:0,aMax:999,
-   test:"تحليل العلف (ELISA / HPLC) للتريكوثيسينات — الآفة الفموية شبه مميّزة حقلياً",
-   w:{nb_oral_ulcers:3,cn_wasting:2,cs_drop_production:1,cs_egg_quality:1,pt_hemorrhage:1,kd_urate:1,sk_wounds:1}},
+   test:"تحليل العلف (ELISA / HPLC) للتريكوثيسينات — الآفة الفموية شبه مميّزة حقلياً (لويحات صفراء تتجمع وتتحول لتقرحات قرب فتحات الغدد اللعابية بالحنك واللسان، مع قشور بحافة المنقار الداخلية)",
+   w:{nb_oral_ulcers:3,bmw_yellow:2,nt_feather_malform:2,lv_hemorrhage:1,lv_necrotic_foci:1,cn_wasting:2,cs_drop_production:1,cs_egg_quality:1,pt_hemorrhage:1,kd_urate:1,sk_wounds:1}},
+  {id:"ergot",ar:"التسمم بالإرغوت (فطر Claviceps)",en:"Ergotism",cls:"سُمّي",aMin:0,aMax:999,
+   test:"فحص العلف بحثًا عن الحبوب السوداء (سكليروتيوم Claviceps) خصوصًا الجاودار — الآفة المميزة: حويصلات وتقرحات بالمنقار/العرف/الداليات/الأصابع تتطور لغرغرينا وضمور مزمن (Diseases of Poultry)",
+   w:{hd_comb_gangrene:3,ht_enlargement:1,lv_hepatomegaly:1,cs_drop_production:1,cs_diarrhea:1,cn_wasting:1}},
+  {id:"fumo",ar:"التسمم بالفومونيزين",en:"Fumonisin Toxicosis",cls:"سُمّي",aMin:0,aMax:999,
+   test:"تحليل العلف (ELISA / HPLC) للفومونيزين — غالبًا مصاحب للأفلاتوكسين أو الزيرالينون في نفس العينة (Diseases of Poultry)",
+   w:{cs_diarrhea:2,lv_hepatomegaly:2,lv_necrotic_foci:1,kd_enlarged:1,pv_enlarged:1,sp_atrophied:2,bu_atrophied:1,fh_soft_bones:2,cn_wasting:1,cs_drop_production:1}},
+  {id:"monilif",ar:"التسمم بالمونيليفورمين",en:"Moniliformin Toxicosis",cls:"سُمّي",aMin:0,aMax:999,
+   test:"تحليل العلف (ELISA / HPLC) للمونيليفورمين — سام للقلب والكلى، غالبًا مصاحب للفومونيزين بنفس العينة (Diseases of Poultry)",
+   w:{ht_enlargement:2,cn_ascites:2,kd_nephrosis:2,lv_necrotic_foci:1,lv_bile_duct:1,cs_drop_production:1,cs_diarrhea:1,cs_sudden_death:1}},
   {id:"zea",ar:"التسمم بالزيرالينون (سمّ استروجيني)",en:"Zearalenone Toxicosis (Mycoestrogen)",cls:"سُمّي",aMin:0,aMax:999,
    test:"تحليل العلف (ELISA / HPLC) للزيرالينون — يُشتبه به خاصة عند وجود علامات تأنيث في الذكور مع أكياس تناسلية في الإناث",
    w:{od_cystic:1,ts_regression:2,od_cloaca_swelling:2,ov_regression:1,ov_cysts:2,cs_egg_quality:1,cs_drop_production:1}},
@@ -1425,8 +1464,8 @@ const DISEASES = [
   // Duck Production and Management, ch.5 — Aflatoxicosis
   {id:"dk_afla", ar:"التسمم بالأفلاتوكسين", en:"Aflatoxicosis", cls:"تسمم غذائي",
    aMin:0, aMax:999, birdTypes:["duck_broiler","duck_layer","duck_breeder"],
-   test:"تحليل كيميائي للعليقة (HPLC/ELISA لمستوى الأفلاتوكسين) — البط أكثر حساسية من كل أنواع الدواجن الأخرى للأفلاتوكسين",
-   w:{lv_fatty:2, lv_friable_yellow:2, cn_wasting:1, cs_drop_production:1, cn_ascites:1, hd_facial_edema:1, lv_hepatomegaly:1}},
+   test:"تحليل كيميائي للعليقة (HPLC/ELISA لمستوى الأفلاتوكسين) — البط (خصوصًا صغار البط) الأكثر حساسية من كل أنواع الدواجن الأخرى للأفلاتوكسين، حتى بمستويات ملوثة أقل مما يتحمله الدجاج (Diseases of Poultry، فصل Aflatoxicosis)",
+   w:{dk_lv_yellowgreen_atrophy:3, dk_leg_purple:2, lv_fatty:2, kd_pale:2, nt_ataxia:1, cs_nervous:1, ht_hydropericardium:1, cn_wasting:1, cs_drop_production:1, cn_ascites:1, hd_facial_edema:1, lv_hepatomegaly:1}},
 
   // Botulism — feed-waste-related, discussed in the fattening booklet context
   {id:"dk_bot", ar:"التسمم البوتيوليني", en:"Botulism (Clostridium botulinum toxin)", cls:"تسمم بكتيري",
@@ -1530,7 +1569,7 @@ const TXPX = {
   coc:{tx:"أمبروليوم/تولترازوريل/دايكلازوريل/سلفا حسب الحالة + فيتامين K و A.",px:"برنامج أنتيكوكسيديال أو لقاح، فرشة جافة، تدوير المطهرات، إدارة الرطوبة."},
   his:{tx:"لا يوجد دواء مرخّص فعّال في كثير من الأسواق؛ الوقاية هي الأساس + دعم.",px:"مكافحة ديدان الأعور (Heterakis) الناقلة، فصل الرومي عن الدجاج، إدارة الفرشة."},
   asp:{tx:"إزالة المصدر (علف/فرشة متعفنة) فوراً؛ مضادات فطرية محدودة الجدوى + دعم.",px:"علف وفرشة نظيفة جافة، تهوية، تطهير المفرخ، تجنّب العفن."},
-  afl:{tx:"إيقاف العلف الملوث فوراً + رابط سموم (toxin binder) + دعم كبدي وفيتامينات وبروتين.",px:"فحص العلف، رابط سموم وقائي، تخزين جاف، مكافحة الفطر."},
+  afl:{tx:"إيقاف العلف الملوث فوراً + رابط سموم (toxin binder) + دعم كبدي وفيتامينات وبروتين. ⚠️ تنبيه دوائي: الأفلاتوكسين بيقلّل امتصاص الإنروفلوكساسين، وبيقصّر عمر النصف بالدم لسيفتيوفور وكلورتتراسيكلين (فعالية أقل من المتوقع)، وبيزوّد بقايا الإنروفلوكساسين والسيبروفلوكساسين بالأنسجة (يطيل فترة السحب قبل الذبح) — Diseases of Poultry.",px:"فحص العلف، رابط سموم وقائي، تخزين جاف، مكافحة الفطر."},
   ochra:{tx:"إيقاف العلف الملوث + رابط سموم + دعم كلوي (مياه وفيتامينات) + خفض البروتين.",px:"فحص العلف (خاصة الذرة)، تخزين جيد، رابط سموم، ضبط الرطوبة."},
   t2:{tx:"إيقاف العلف الملوث فوراً + رابط سموم + عناية موضعية بتقرحات الفم/المنقار + دعم مناعي وفيتامينات (خاصة A وE).",px:"فحص العلف (القمح والذرة معرّضان)، رابط سموم واسع الطيف، تخزين جاف بعيد عن الرطوبة، تجنّب حبوب متعفنة الظاهر."},
   zea:{tx:"إيقاف العلف الملوث + رابط سموم مخصّص للإستروجينات الفطرية + مراجعة أداء الأمهات (خصوبة/فقس).",px:"فحص الذرة والقمح خاصة بعد تخزين رطب، رابط سموم وقائي، تجنّب تلوّث الفيوزاريوم في الحبوب."},
@@ -1859,10 +1898,12 @@ function dxReset(){
   const s=document.getElementById("dxsearch"); if(s)s.value="";
   updateDxCounts(); dxCompute();
   window.__rxURL=null;
+  window.__rxUploading=false;
   document.getElementById("rxStatus").textContent="";
   document.getElementById("rxPreviewWrap").innerHTML="";
   document.getElementById("rx_file").value="";
   window.__necropsyURL=null;
+  window.__necropsyUploading=false;
   document.getElementById("necropsyStatus").textContent="";
   document.getElementById("necropsy_file").value="";
   confirmedDxList=[]; renderConfirmedDxChips();
@@ -1894,7 +1935,8 @@ async function onPhotoChosen(file,kind){
   if(!file)return;
   const statusId=kind==='necropsy'?"necropsyStatus":"rxStatus";
   const status=document.getElementById(statusId);
-  status.textContent="⏳ جارِ ضغط ورفع الصورة…";
+  if(kind==='necropsy') window.__necropsyUploading=true; else window.__rxUploading=true;
+  status.textContent="⏳ جارِ ضغط ورفع الصورة… (استنى لحد ما تظهر علامة ✅ قبل ما تحفظ الزيارة)";
   try{
     const originalKB=Math.round(file.size/1024);
     const blob=await compressImageFile(file);
@@ -1908,6 +1950,8 @@ async function onPhotoChosen(file,kind){
     status.innerHTML=`✅ تم الرفع (${originalKB}KB → ${compressedKB}KB) — <a href="${url}" target="_blank">عرض الصورة</a>`;
   }catch(e){
     status.textContent="❌ فشل الرفع: "+(e.message||e);
+  }finally{
+    if(kind==='necropsy') window.__necropsyUploading=false; else window.__rxUploading=false;
   }
 }
 
@@ -2310,7 +2354,12 @@ function renderDashboard(){
       <div class="row"><button class="btn sm" onclick="openClientDetail('${a.f.clientId}')">فتح ملف العميل</button></div>
     </div>`).join("") : '<p class="hint">لا توجد تنبيهات حاليًا 👍</p>';
 
-  const followups=STATE.visits.filter(v=>v.nextVisitDate).map(v=>{
+  const followups=STATE.visits.filter(v=>{
+    if(!v.nextVisitDate) return false;
+    // لو حصلت زيارة تانية لنفس العميل (ونفس الدورة لو محدَّدة) في يوم ميعاد المتابعة أو بعده، يبقى المتابعة اتعملت فعلاً ومحتاجناش نفضل منبّهين بيها
+    const fulfilled=STATE.visits.some(v2=>v2.id!==v.id && v2.clientId===v.clientId && (!v.flockId||v2.flockId===v.flockId) && v2.date>=v.nextVisitDate);
+    return !fulfilled;
+  }).map(v=>{
     const client=STATE.clients.find(c=>c.id===v.clientId);
     return {v, client, overdue: v.nextVisitDate<today};
   }).sort((a,b)=>a.v.nextVisitDate.localeCompare(b.v.nextVisitDate));
@@ -3275,6 +3324,34 @@ function onFieldSignalChange(selId,hintId){
   const map=maps[selId];
   document.getElementById(hintId).textContent=(map&&map[val])?map[val]:"";
 }
+let customFieldSignalCounter=0;
+function addCustomFieldSignal(icon,label,value){
+  const id="cfs_"+(customFieldSignalCounter++);
+  const div=document.createElement("div");
+  div.id=id;
+  div.style="display:flex;gap:6px;align-items:flex-end;margin-top:6px;flex-wrap:wrap";
+  div.innerHTML=`
+    <div style="flex:0 0 64px"><label class="small">أيقونة</label><input class="cfs_icon" placeholder="📌" value="${icon||''}" style="text-align:center;width:100%"></div>
+    <div style="flex:1;min-width:120px"><label class="small">اسم الملاحظة</label><input class="cfs_label" placeholder="مثال: موت العينة" value="${(label||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
+    <div style="flex:1;min-width:120px"><label class="small">القيمة/الوصف</label><input class="cfs_value" placeholder="مثال: نافقة بالكامل" value="${(value||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
+    <button class="btn sm danger" type="button" onclick="document.getElementById('${id}').remove()">🗑</button>`;
+  document.getElementById("customFieldSignals").appendChild(div);
+}
+function collectCustomFieldSignals(){
+  return Array.from(document.getElementById("customFieldSignals").children).map(div=>({
+    icon:div.querySelector(".cfs_icon").value.trim(),
+    label:div.querySelector(".cfs_label").value.trim(),
+    value:div.querySelector(".cfs_value").value.trim()
+  })).filter(x=>x.label||x.value);
+}
+function restoreCustomFieldSignals(list){
+  document.getElementById("customFieldSignals").innerHTML="";
+  (list||[]).forEach(x=>addCustomFieldSignal(x.icon,x.label,x.value));
+}
+function formatCustomFieldSignals(list){
+  if(!list||!list.length) return "";
+  return list.map(x=>`${x.icon||'📌'} ${x.label}${x.value?': '+x.value:''}`).join('، ');
+}
 function collectFieldSignals(){
   return {
     posture:document.getElementById("fs_posture").value,
@@ -3283,7 +3360,8 @@ function collectFieldSignals(){
     dropInt:document.getElementById("fs_dropInt").value,
     dropCecal:document.getElementById("fs_dropCecal").value,
     litter:document.getElementById("fs_litter").value,
-    pecking:document.getElementById("fs_pecking").value
+    pecking:document.getElementById("fs_pecking").value,
+    custom:collectCustomFieldSignals()
   };
 }
 function loadFieldSignals(fs){
@@ -3295,6 +3373,7 @@ function loadFieldSignals(fs){
   document.getElementById("fs_dropCecal").value=fs.dropCecal||"";
   document.getElementById("fs_litter").value=fs.litter||"";
   document.getElementById("fs_pecking").value=fs.pecking||"";
+  restoreCustomFieldSignals(fs.custom);
   onFieldSignalChange("fs_posture","postureHint");
   onFieldSignalChange("fs_distribution","distHint");
   onFieldSignalChange("fs_behavior","behHint");
@@ -4361,6 +4440,10 @@ let editingVisitId=null;
 let savingVisit=false;
 async function saveVisit(){
   if(savingVisit) return; // يمنع تكرار الحفظ لو المستخدم ضغط زر الحفظ أكتر من مرة (شبكة بطيئة مثلاً)
+  if(window.__rxUploading || window.__necropsyUploading){
+    alert("⏳ لسه في صورة بترفع (روشتة/تحاليل أو تشريح) — استنى لحد ما تظهر علامة ✅ جنب الصورة الأول، وبعدين احفظ الزيارة عشان الصورة متضيعش.");
+    return;
+  }
   const clientId=document.getElementById("nv_client").value;
   if(!clientId){alert("اختر العميل أولاً.");return;}
   const date=document.getElementById("nv_date").value;
