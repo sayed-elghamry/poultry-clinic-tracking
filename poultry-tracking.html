@@ -305,7 +305,7 @@
         <div class="grid3">
           <div class="field"><label>تاريخ التحميل (Placement Date)</label><input id="nf_placement" type="date" data-auto="1" oninput="this.dataset.auto=''"></div>
           <div class="field"><label>نوع الطائر</label>
-            <select id="nf_birdtype" onchange="this.dataset.touched='1';updateProdVisibility();populateBreedSelect();renderDxOrgans()">
+            <select id="nf_birdtype" onchange="this.dataset.touched='1';updateProdVisibility();populateBreedSelect();renderDxOrgans();populateConfirmedDiagnosisSelect()">
               <option value="broiler">تسمين (45 يوم)</option>
               <option value="sasso">ساسو (60-70 يوم)</option>
               <option value="baladi">بلدي (90 يوم)</option>
@@ -1298,6 +1298,9 @@ const LESIONS = [
 ];
 
 const DISEASES = [
+  {id:"followup",ar:"متابعة (زيارة متابعة بدون تشخيص جديد)",en:"Follow-up visit (no new diagnosis)",cls:"إداري",aMin:0,aMax:999,
+   test:"مش مرض حقيقي — اختيار إداري بس لتوصيف إن الزيارة دي متابعة لحالة/بروتوكول علاج قائم بالفعل، من غير تشخيص جديد. بيظهر أول اختيار في كل الأنواع، ومالوش أي تأثير على الترجيح التشخيصي (وزنه صفر دايمًا).",
+   w:{}},
   {id:"col",ar:"الكولاي / CCRD",en:"Colibacillosis / CCRD",cls:"بكتيري",aMin:0,aMax:999,
    test:"عزل E. coli من الكبد/نخاع العظم + اختبار حساسية",
    w:{lv_perihep:3,ht_pericarditis:3,ts_orchitis:1,ts_nodules:1,as_yellow_caseous:3,ov_peritonitis:3,pt_omphalitis:3,pt_fibrin:3,as_sacculitis:2,as_adhesions:2,ht_fibrin:2,od_salpingitis:2,od_egg_retention:2,sk_cellulitis:2,pt_effusion:2,as_cloudiness:1,as_thickening:1,od_exudate:1,sp_enlarged:1,lv_hepatomegaly:1,ln_pneumonia:1,ln_consolidation:1,ln_congestion:1,ln_edema:1,ln_hemorrhage:1,kd_swollen:1,ov_rupture:1,ov_cysts:1,hd_facial_edema:1,cs_sudden_death:1,tm_cyanosis:1,pt_egg_free:1,cs_litter_pecking:1,cs_nasal_discharge:1,cs_nasal_watery:1}},
@@ -1551,7 +1554,7 @@ const DISEASES = [
    test:"مسحة دم (Giemsa) لرؤية الجاميتوسيت + تحديد كثرة الكريات البيضاء — ينتقل بذباب Simulium الأسود، يزداد قرب المجاري المائية",
    w:{sp_enlarged:2,cs_leukocytosis:2,cc_anemic:2,lv_hepatomegaly:1,cs_leg_paralysis:1,cs_dyspnea:1,cs_sudden_death:1}},
 
-  /* ============ DUCK-SPECIFIC DISEASES START (dk_) ============ */
+  /* ============ DUCK-SPECIFIC DISEASES START (dk_) — من 28 أغسطس 2026: البط بقى "خاص + مشترك" زي الرومي (مش معزول بالكامل)، يعني زيارة بط بتشوف الأمراض دي زائد الأمراض العامة (غير مسبوقة ببادئة نوع) ============ */
 // Duck Production and Management, ch.5 — Viral Diseases: DVH
   {id:"dk_dvh", ar:"التهاب الكبد الفيروسي بالبط", en:"Duck Viral Hepatitis (DHV-1/2/3)", cls:"فيروسي",
    aMin:0, aMax:28, birdTypes:["duck_broiler","duck_breeder"],
@@ -2115,7 +2118,7 @@ function dxScoreAll(){
   for(const d of DISEASES){
     const declaredSpecies=d.id.startsWith("dk_")?"duck":(d.id.startsWith("tk_")?"turkey":(d.id.startsWith("pg_")?"pigeon":(d.id.startsWith("os_")?"ostrich":null)));
     if(declaredSpecies && declaredSpecies!==species) continue; // مرض خاص بنوع طائر مختلف
-    if(!declaredSpecies && (species==="duck"||species==="pigeon"||species==="ostrich")) continue; // البط والحمام والنعام محتاجين تغطية مخصّصة كاملة، مش هيعتمدوا على أمراض الدجاج/الرومي العامة (تشريح وأوبئة مختلفة جوهريًا)
+    if(!declaredSpecies && (species==="pigeon"||species==="ostrich")) continue; // الحمام والنعام محتاجين تغطية مخصّصة كاملة، مش هيعتمدوا على أمراض الدجاج/الرومي العامة (تشريح وأوبئة مختلفة جوهريًا) — البط بقى زي الرومي: خاص + مشترك
     let score=0; const hits=[];
     for(const id of dxSelected){
       const t=d.w[id]||0;
@@ -2972,6 +2975,9 @@ function renderClientDetail(id){
               <option value="turkey_layer"${f.birdType==='turkey_layer'?' selected':''}>رومي بياض</option>
               <option value="turkey_breeder"${f.birdType==='turkey_breeder'?' selected':''}>رومي أمهات</option>
               <option value="pigeon"${f.birdType==='pigeon'?' selected':''}>حمام</option>
+              <option value="ostrich_chick"${f.birdType==='ostrich_chick'?' selected':''}>نعام صغار</option>
+              <option value="ostrich_grower"${f.birdType==='ostrich_grower'?' selected':''}>نعام نامي</option>
+              <option value="ostrich_breeder"${f.birdType==='ostrich_breeder'?' selected':''}>نعام أمهات</option>
             </select></div>
           <div class="field"><label>عدد الطيور الابتدائي</label><input id="ef_birdcount0" type="number" value="${f.birdCountInitial||''}"></div>
           <div class="field"><label>الحالة</label>
@@ -2983,7 +2989,8 @@ function renderClientDetail(id){
     }
     return `<div class="flockitem">
       <div class="ci-t">${f.houseName||'—'} <span class="small">(${f.flockCode})</span>
-        <span class="chip ${f.status==='open'?'open':'closed'}">${f.status==='open'?'مفتوح':'مغلق'}</span></div>
+        <span class="chip ${f.status==='open'?'open':'closed'}">${f.status==='open'?'مفتوح':'مغلق'}</span>
+        ${f.status==='open'&&flockNeedsFollowUp(f.id)?'<span class="chip" style="background:#fff3d6;color:#8a6d1a;border:1px solid #c98a1c">🔄 متابعة — محتاج إكمال بروتوكول العلاج</span>':''}</div>
       <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · ${cycleTxt} · عدد ابتدائي: ${f.birdCountInitial||'—'}</div>
       <div class="row" style="margin-top:6px">
         ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:`<button class="btn sm pri" onclick="generateCycleReportPDF('${f.id}')">📄 تقرير الدورة الشامل</button>`}
@@ -3762,11 +3769,22 @@ function applyTreatmentHistoryDefaults(){
   }
   const client=STATE.clients.find(c=>c.id===clientId);
   const isMonitoring=client && client.clientType==="monitoring";
-  const prevVisits=isMonitoring?STATE.visits.filter(v=>v.clientId===clientId).sort((a,b)=>new Date(b.date)-new Date(a.date)):[];
+  // لو العنبر (الدورة) اتحدد فعلاً (window.__matchedFlockId)، لازم نجيب تاريخ العلاج من نفس العنبر ده بس —
+  // مش من آخر زيارة للعميل بشكل عام، لأن العميل ممكن يبقى عنده أكتر من عنبر/دورة في نفس الوقت، وتاريخ عنبر
+  // متاني ملوش لازمة هنا. لو لسه العنبر مش متحدد (أول ما بيختار العميل قبل ما يدخل العمر/التاريخ)، نرجع مؤقتًا
+  // لآخر زيارة للعميل ككل كتقدير أولي، وهيتظبط لوحده بمجرد ما العنبر يتحدد.
+  let prevVisits=[];
+  if(isMonitoring){
+    if(window.__matchedFlockId){
+      prevVisits=STATE.visits.filter(v=>v.flockId===window.__matchedFlockId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    }else{
+      prevVisits=STATE.visits.filter(v=>v.clientId===clientId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    }
+  }
   const last=prevVisits[0]||null;
 
   if(!last){
-    // عميل زيارة، أو عميل متابعة لسه مفيش له زيارات سابقة — نمسح أي تعبئة تلقائية قديمة ونسيب الحقل فاضي للطبيب
+    // عميل زيارة، أو عميل متابعة لسه مفيش له زيارات سابقة على نفس العنبر (دورة جديدة) — نمسح أي تعبئة تلقائية قديمة ونسيب الحقل فاضي للطبيب
     if(vaccField.dataset.autofilled==="1"){ vaccField.value=""; vaccField.dataset.autofilled=""; }
     if(prevMedField.dataset.autofilled==="1"){ prevMedField.value=""; prevMedField.dataset.autofilled=""; }
     vaccHint.style.display="none"; prevmedHint.style.display="none";
@@ -3875,6 +3893,14 @@ function loadFieldSignals(fs){
 }
 function resetFieldSignals(){ loadFieldSignals({}); }
 
+// عنبر "محتاج متابعة" = فيه دواء اتوصف في آخر زيارة له ولسه ماتقيّمش رد فعله (نفس معيار renderPendingMedResponses)
+// — يعني بروتوكول العلاج لسه مكملش، والطبيب لازم يكمّله/يقيّمه في الزيارة الجاية
+function flockNeedsFollowUp(flockId){
+  const flockVisits=STATE.visits.filter(v=>v.flockId===flockId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const last=flockVisits[0];
+  if(!last) return false;
+  return (last.medications||[]).some(m=>!m.response || !m.responseConfirmed);
+}
 function renderClientOpenFlocks(){
   const host=document.getElementById("clientOpenFlocks");
   if(!host) return;
@@ -3886,7 +3912,10 @@ function renderClientOpenFlocks(){
     return;
   }
   host.innerHTML='عنابر العميل المفتوحة: '+
-    openFlocks.map(f=>`<span class="chip-btn" onclick="pickExistingFlock('${f.id}')">📋 ${f.houseName||f.flockCode}</span>`).join('')+
+    openFlocks.map(f=>{
+      const followUp=flockNeedsFollowUp(f.id);
+      return `<span class="chip-btn" onclick="pickExistingFlock('${f.id}')" ${followUp?'style="border-color:#c98a1c"':''}>${followUp?'🔄 متابعة — ':'📋 '}${f.houseName||f.flockCode}</span>`;
+    }).join('')+
     `<span class="chip-btn" onclick="focusNewHouse()">+ عنبر جديد</span>`;
 }
 function focusNewHouse(){
@@ -3932,7 +3961,7 @@ function checkFlockMatch(){
     }
   }
 
-  if(!clientId||!date){ banner.innerHTML=""; newFields.style.display="none"; updateProdVisibility(); refreshBreedTarget(); return; }
+  if(!clientId||!date){ banner.innerHTML=""; newFields.style.display="none"; updateProdVisibility(); refreshBreedTarget(); applyTreatmentHistoryDefaults(); return; }
 
   // لو المستخدم اختار عنبر مفتوح صراحةً من القائمة السريعة، استخدمه مباشرة (تطابق مؤكد، بدون تخمين بالعمر)
   if(window.__pinnedFlockId){
@@ -3948,6 +3977,8 @@ function checkFlockMatch(){
       renderPendingMedResponses(pinned.id);
       updateProdVisibility();
       refreshBreedTarget();
+      applyTreatmentHistoryDefaults();
+      populateConfirmedDiagnosisSelect();
       return;
     } else {
       window.__pinnedFlockId=null; // العنبر اتغيّر يدويًا، رجّع للمطابقة التلقائية
@@ -3979,6 +4010,8 @@ function checkFlockMatch(){
     updateProdVisibility();
   }
   refreshBreedTarget();
+  applyTreatmentHistoryDefaults();
+  populateConfirmedDiagnosisSelect();
 }
 function renderPendingMedResponses(flockId){
   const host=document.getElementById("pendingMedResponses");
@@ -4501,7 +4534,7 @@ function addMedRow(){
   const div=document.createElement("div");
   div.className="medcard"; div.id=id;
   const diseaseOptions='<option value="">— بدون ربط بمرض —</option>'+
-    DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("")+
+    visibleDiseasesForBirdType(currentVisitBirdType()).map(d=>`<option value="${d.id}">${d.ar}</option>`).join("")+
     '<option value="__other__">أخرى (اكتب اسم المرض)…</option>';
   const purposeOptions='<option value="">— بدون تحديد —</option>'+
     MED_PURPOSES.map(p=>`<option value="${p[0]}">${p[1]}</option>`).join("");
@@ -4653,8 +4686,10 @@ function renderLearnedInsights(){
 }
 function populateConfirmedDiagnosisSelect(){
   const sel=document.getElementById("v_confirmed_pick"); if(!sel)return;
+  const followup=DISEASES.find(d=>d.id==="followup");
   sel.innerHTML='<option value="">— اختر مرض —</option>'+
-    DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("")+
+    (followup?`<option value="followup">${followup.ar}</option>`:"")+
+    visibleDiseasesForBirdType(currentVisitBirdType()).map(d=>`<option value="${d.id}">${d.ar}</option>`).join("")+
     '<option value="__other__">أخرى (اكتب اسم المرض)…</option>';
 }
 /* قائمة الأمراض المؤكَّدة لنفس الزيارة (بتدعم أكتر من مرض/عدوى مشتركة) — كل عنصر {id, label} حيث id فارغ لو مرض مكتوب حر */
@@ -4742,6 +4777,17 @@ function onFeedChange(){
   wrap.style.display=(v && v!=="طبيعي")?"":"none";
   if(!wrap.style.display || wrap.style.display==="none") document.getElementById("v_feedPattern").value="";
 }
+// نفس منطق فصل الأنواع المستخدم في dxScoreAll — بيرجع بس الأمراض المناسبة لنوع الطائر ده (زائد المشترك مع الدجاج/الرومي لو النوع مش حمام/نعام معزول)
+function visibleDiseasesForBirdType(bt){
+  const species=bt&&bt.startsWith("duck")?"duck":(bt&&bt.startsWith("turkey")?"turkey":(bt==="pigeon"?"pigeon":(bt&&bt.startsWith("ostrich")?"ostrich":"chicken")));
+  return DISEASES.filter(d=>{
+    if(d.id==="followup") return false; // دي مش مرض حقيقي، بتتضاف يدويًا بس في قائمة "التشخيص المؤكد" مش هنا
+    const declaredSpecies=d.id.startsWith("dk_")?"duck":(d.id.startsWith("tk_")?"turkey":(d.id.startsWith("pg_")?"pigeon":(d.id.startsWith("os_")?"ostrich":null)));
+    if(declaredSpecies && declaredSpecies!==species) return false;
+    if(!declaredSpecies && (species==="pigeon"||species==="ostrich")) return false;
+    return true;
+  });
+}
 function currentVisitBirdType(){
   if(window.__matchedFlockId){
     const f=STATE.flocks.find(x=>x.id===window.__matchedFlockId);
@@ -4789,7 +4835,7 @@ function addSeroRow(){
   const div=document.createElement("div");
   div.className="serorow"; div.id=id;
   const diseaseOptions='<option value="">— اختر المرض —</option>'+
-    DISEASES.map(d=>`<option value="${d.id}">${d.ar}</option>`).join("");
+    visibleDiseasesForBirdType(currentVisitBirdType()).map(d=>`<option value="${d.id}">${d.ar}</option>`).join("");
   div.innerHTML=`
     <div class="field"><label>المرض</label><select class="s_disease">${diseaseOptions}</select></div>
     <div class="field"><label>الاختبار</label><select class="s_test"><option>HI</option><option>ELISA</option></select></div>
