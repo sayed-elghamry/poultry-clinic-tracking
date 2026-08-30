@@ -199,6 +199,7 @@
   <button class="tab" data-tab="newvisit" onclick="showTab('newvisit')">➕ تسجيل زيارة/متابعة</button>
   <button class="tab" data-tab="openflocks" onclick="showTab('openflocks')">🐔 الدورات المفتوحة</button>
   <button class="tab" data-tab="consumption" onclick="showTab('consumption')">📦 استهلاك الأصناف</button>
+  <button class="tab" data-tab="feedmix" onclick="showTab('feedmix')">🌾 تكوين العلف</button>
 </div>
 
 <div class="wrap">
@@ -607,6 +608,34 @@
         <div class="field" style="align-self:end"><button class="btn pri" style="width:100%" onclick="runConsumptionReport()">🔍 احسب الاستهلاك</button></div>
       </div>
       <div id="consumptionResults"></div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: FEED FORMULATION (حاسبة تكوين بسيطة أصلية بالبرنامج — مفيش ملف منفصل ولا iframe) ============ -->
+  <div class="panel" id="tab-feedmix">
+    <div class="card">
+      <h2>🌾 تكوين العلف</h2>
+      <div class="small" style="color:#777;margin-bottom:8px">حاسبة بسيطة لتركيب عليقة يدويًا: اكتب الخامات ونسب الإدراج، وهتلاقي المجموع والبروتين والطاقة المتوسطة وتكلفة الطن بيتحسبوا أول بأول.</div>
+      <table style="width:100%;border-collapse:collapse" id="feedmixTable">
+        <thead><tr style="background:var(--surface2,#f4f6f4)">
+          <th style="padding:6px;text-align:right">الخامة</th>
+          <th style="padding:6px">% الإدراج</th>
+          <th style="padding:6px">بروتين %</th>
+          <th style="padding:6px">طاقة (كيلوكالوري/كجم)</th>
+          <th style="padding:6px">سعر الطن (جنيه)</th>
+          <th style="padding:6px"></th>
+        </tr></thead>
+        <tbody id="feedmixBody"></tbody>
+      </table>
+      <div class="row" style="margin-top:8px"><button class="btn sm" onclick="addFeedRow()">+ إضافة خامة</button></div>
+      <div class="card" style="margin-top:12px;background:var(--surface2,#f4f6f4)">
+        <div class="grid3">
+          <div><b>مجموع % الإدراج:</b> <span id="feedmixTotalPct">0</span>% <span id="feedmixPctWarn" style="color:#c0392b;font-weight:700"></span></div>
+          <div><b>بروتين العليقة (متوسط مرجّح):</b> <span id="feedmixAvgProtein">0</span>%</div>
+          <div><b>طاقة العليقة (متوسط مرجّح):</b> <span id="feedmixAvgEnergy">0</span> كيلوكالوري/كجم</div>
+        </div>
+        <div style="margin-top:6px"><b>تكلفة الطن التقريبية:</b> <span id="feedmixTotalCost">0</span> جنيه</div>
+      </div>
     </div>
   </div>
 
@@ -2746,10 +2775,14 @@ function startListeners(){
 function showTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
-  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail",consumption:"tab-consumption"};
+  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail",consumption:"tab-consumption",feedmix:"tab-feedmix"};
   document.getElementById(map[name]).classList.add("active");
   if(name==="openflocks") renderOpenFlocks();
   if(name==="dashboard") renderDashboard();
+  if(name==="feedmix" && document.getElementById("feedmixBody").children.length===0){
+    addFeedRow("ذرة صفراء",60,8.5,3350,0);
+    addFeedRow("كسب فول الصويا 44%",30,44,2230,0);
+  }
 }
 /* ---------------------- تذكير التقويم لميعاد المتابعة (.ics قابل للإضافة لأي تقويم على الموبايل/الكمبيوتر) ---------------------- */
 function downloadVisitReminderICS(dateStr, title, note){
@@ -2993,7 +3026,8 @@ function renderClientDetail(id){
         ${f.status==='open'&&flockNeedsFollowUp(f.id)?'<span class="chip" style="background:#fff3d6;color:#8a6d1a;border:1px solid #c98a1c">🔄 متابعة — محتاج إكمال بروتوكول العلاج</span>':''}</div>
       <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · ${cycleTxt} · عدد ابتدائي: ${f.birdCountInitial||'—'}</div>
       <div class="row" style="margin-top:6px">
-        ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:`<button class="btn sm pri" onclick="generateCycleReportPDF('${f.id}')">📄 تقرير الدورة الشامل</button>`}
+        ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:`<button class="btn sm pri" onclick="generateCycleReportPDF('${f.id}')">📄 ${f.cycleReportUrl?'إعادة توليد التقرير':'توليد تقرير الدورة الشامل'}</button>`}
+        ${f.status==='closed'&&f.cycleReportUrl?`<a class="btn sm" href="${f.cycleReportUrl}" target="_blank">🔗 عرض تقرير الدورة المحفوظ${f.fcrActual!=null?' (FCR '+f.fcrActual.toFixed(2)+')':''}</a>`:''}
         <button class="btn sm" onclick="startEditFlock('${f.id}')">✏️ تعديل الدورة</button>
         <button class="btn sm danger" onclick="deleteFlock('${f.id}')">🗑 حذف الدورة</button>
         <button class="btn sm" onclick="exportFlockExcel('${f.id}')">📊 تصدير Excel</button>
@@ -3226,7 +3260,22 @@ async function generateCycleReportPDF(flockId, override){
     finalizePage();
     const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
     pages.forEach((dataUrl,i)=>{ if(i>0)pdf.addPage(); pdf.addImage(dataUrl,"JPEG",0,0,210,297); });
-    pdf.save(`تقرير-دورة-${flock.houseName||flock.flockCode}-${closedAt.slice(0,10)}.pdf`);
+    // بدل التنزيل التلقائي للـ PDF، بنحفظه داخل البرنامج (Firebase Storage) ونربطه بالدورة —
+    // ده أساس مستقبلي لربطه بكراسة المزرعة (سحب العلف، FCR، إلخ) بدل ما يضيع في مجلد التنزيلات
+    const pdfBlob=pdf.output("blob");
+    const path=`cycle-reports/${flockId}_${Date.now()}.pdf`;
+    const ref=storage.ref().child(path);
+    await ref.put(pdfBlob, {contentType:"application/pdf"});
+    const url=await ref.getDownloadURL();
+    const generatedAt=new Date().toISOString();
+    await fs.collection("flocks").doc(flockId).update({
+      cycleReportUrl:url, cycleReportGeneratedAt:generatedAt,
+      fcrActual:(fcrActual!=null)?fcrActual:null
+    });
+    const flockLocal=STATE.flocks.find(x=>x.id===flockId);
+    if(flockLocal){ flockLocal.cycleReportUrl=url; flockLocal.cycleReportGeneratedAt=generatedAt; flockLocal.fcrActual=(fcrActual!=null)?fcrActual:null; }
+    alert("✅ اتحفظ تقرير الدورة داخل البرنامج. تقدر تفتحه في أي وقت من صفحة العميل جنب اسم الدورة.");
+    if(typeof currentClientDetailId!=="undefined" && currentClientDetailId===flock.clientId) renderClientDetail(flock.clientId);
   }catch(e){
     alert("⚠ تعذّر توليد تقرير الدورة: "+(e.message||e));
   }
@@ -4258,6 +4307,43 @@ function baseAmountLabel(totalBase, family){
   if(family==="mass") return totalBase>=1000 ? (totalBase/1000).toFixed(2)+" كجم" : totalBase.toFixed(1)+" جم";
   if(family==="vol") return totalBase>=1000 ? (totalBase/1000).toFixed(2)+" لتر" : totalBase.toFixed(1)+" سم";
   return totalBase.toFixed(1);
+}
+/* ---------------------- تكوين العلف (حاسبة بسيطة) ---------------------- */
+let feedmixRowSeq=0;
+function addFeedRow(name,pct,protein,energy,price){
+  const id="fr"+(++feedmixRowSeq);
+  const tr=document.createElement("tr");
+  tr.id=id;
+  tr.innerHTML=`
+    <td style="padding:4px"><input type="text" value="${name||''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="0.1" value="${pct||''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="0.1" value="${protein||''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="1" value="${energy||''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="1" value="${price||''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px;text-align:center"><button class="btn sm danger" onclick="document.getElementById('${id}').remove();recalcFeedMix()">حذف</button></td>`;
+  document.getElementById("feedmixBody").appendChild(tr);
+  recalcFeedMix();
+}
+function recalcFeedMix(){
+  const rows=[...document.getElementById("feedmixBody").querySelectorAll("tr")];
+  let totalPct=0, wProtein=0, wEnergy=0, totalCost=0;
+  rows.forEach(tr=>{
+    const inputs=tr.querySelectorAll("input");
+    const pct=parseFloat(inputs[1].value)||0;
+    const protein=parseFloat(inputs[2].value)||0;
+    const energy=parseFloat(inputs[3].value)||0;
+    const price=parseFloat(inputs[4].value)||0;
+    totalPct+=pct;
+    wProtein+=pct*protein/100;
+    wEnergy+=pct*energy/100;
+    totalCost+=pct/100*price*10; // price هو سعر الطن، والطن = 1000كجم، فكل 1% إدراج = 10كجم من الطن
+  });
+  document.getElementById("feedmixTotalPct").textContent=totalPct.toFixed(1);
+  document.getElementById("feedmixAvgProtein").textContent=wProtein.toFixed(2);
+  document.getElementById("feedmixAvgEnergy").textContent=Math.round(wEnergy);
+  document.getElementById("feedmixTotalCost").textContent=Math.round(totalCost).toLocaleString("ar-EG");
+  const warn=document.getElementById("feedmixPctWarn");
+  warn.textContent=Math.abs(totalPct-100)<0.05?"":`⚠ لازم يبقى 100% (الفرق ${(totalPct-100).toFixed(1)}%)`;
 }
 function runConsumptionReport(){
   const drug=document.getElementById("cons_drug").value.trim();
