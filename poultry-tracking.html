@@ -615,24 +615,35 @@
   <div class="panel" id="tab-feedmix">
     <div class="card">
       <h2>🌾 تكوين العلف</h2>
-      <div class="small" style="color:#777;margin-bottom:8px">حاسبة بسيطة لتركيب عليقة يدويًا: اكتب الخامات ونسب الإدراج، وهتلاقي المجموع والبروتين والطاقة المتوسطة وتكلفة الطن بيتحسبوا أول بأول.</div>
-      <table style="width:100%;border-collapse:collapse" id="feedmixTable">
+      <div class="small" style="color:#777;margin-bottom:8px">اختار الخامة من القائمة (بتجيب تحليلها المرجعي تلقائي وتقدر تعدّله)، أو اختار "خامة أخرى" واكتب تحليلك بنفسك. المجموع والتحليل المتوسط وتكلفة الطن بيتحسبوا أول بأول.
+        <br>⚠️ المركزات التجارية (تسمين/بياض) قيمها في القائمة تقريبية عامة فقط — راجع بطاقة التحليل على عبوة المنتج الفعلي وعدّل الأرقام حسبها لأنها بتختلف كتير من شركة لشركة.</div>
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;min-width:760px" id="feedmixTable">
         <thead><tr style="background:var(--surface2,#f4f6f4)">
-          <th style="padding:6px;text-align:right">الخامة</th>
-          <th style="padding:6px">% الإدراج</th>
-          <th style="padding:6px">بروتين %</th>
-          <th style="padding:6px">طاقة (كيلوكالوري/كجم)</th>
-          <th style="padding:6px">سعر الطن (جنيه)</th>
+          <th style="padding:6px;text-align:right;min-width:160px">الخامة</th>
+          <th style="padding:6px;min-width:70px">% الإدراج</th>
+          <th style="padding:6px;min-width:70px">بروتين %</th>
+          <th style="padding:6px;min-width:90px">طاقة (ك.كالوري/كجم)</th>
+          <th style="padding:6px;min-width:60px">دهن %</th>
+          <th style="padding:6px;min-width:60px">ألياف %</th>
+          <th style="padding:6px;min-width:70px">كالسيوم %</th>
+          <th style="padding:6px;min-width:80px">فوسفور متاح %</th>
+          <th style="padding:6px;min-width:80px">سعر الطن</th>
           <th style="padding:6px"></th>
         </tr></thead>
         <tbody id="feedmixBody"></tbody>
       </table>
+      </div>
       <div class="row" style="margin-top:8px"><button class="btn sm" onclick="addFeedRow()">+ إضافة خامة</button></div>
       <div class="card" style="margin-top:12px;background:var(--surface2,#f4f6f4)">
         <div class="grid3">
           <div><b>مجموع % الإدراج:</b> <span id="feedmixTotalPct">0</span>% <span id="feedmixPctWarn" style="color:#c0392b;font-weight:700"></span></div>
-          <div><b>بروتين العليقة (متوسط مرجّح):</b> <span id="feedmixAvgProtein">0</span>%</div>
-          <div><b>طاقة العليقة (متوسط مرجّح):</b> <span id="feedmixAvgEnergy">0</span> كيلوكالوري/كجم</div>
+          <div><b>بروتين العليقة:</b> <span id="feedmixAvgProtein">0</span>%</div>
+          <div><b>الطاقة:</b> <span id="feedmixAvgEnergy">0</span> ك.كالوري/كجم</div>
+          <div><b>الدهن:</b> <span id="feedmixAvgFat">0</span>%</div>
+          <div><b>الألياف:</b> <span id="feedmixAvgFiber">0</span>%</div>
+          <div><b>الكالسيوم:</b> <span id="feedmixAvgCalcium">0</span>%</div>
+          <div><b>الفوسفور المتاح:</b> <span id="feedmixAvgPhos">0</span>%</div>
         </div>
         <div style="margin-top:6px"><b>تكلفة الطن التقريبية:</b> <span id="feedmixTotalCost">0</span> جنيه</div>
       </div>
@@ -2780,8 +2791,8 @@ function showTab(name){
   if(name==="openflocks") renderOpenFlocks();
   if(name==="dashboard") renderDashboard();
   if(name==="feedmix" && document.getElementById("feedmixBody").children.length===0){
-    addFeedRow("ذرة صفراء",60,8.5,3350,0);
-    addFeedRow("كسب فول الصويا 44%",30,44,2230,0);
+    addFeedRow("ذرة صفراء",60);
+    addFeedRow("كسب فول الصويا 44%",30);
   }
 }
 /* ---------------------- تذكير التقويم لميعاد المتابعة (.ics قابل للإضافة لأي تقويم على الموبايل/الكمبيوتر) ---------------------- */
@@ -4308,39 +4319,103 @@ function baseAmountLabel(totalBase, family){
   if(family==="vol") return totalBase>=1000 ? (totalBase/1000).toFixed(2)+" لتر" : totalBase.toFixed(1)+" سم";
   return totalBase.toFixed(1);
 }
-/* ---------------------- تكوين العلف (حاسبة بسيطة) ---------------------- */
+/* ---------------------- تكوين العلف (حاسبة بسيطة + مرجع خامات) ---------------------- */
+// مرجع تحليل تقريبي للخامات الشائعة بمصر (بروتين، طاقة ك.كالوري/كجم، دهن، ألياف، كالسيوم، فوسفور متاح) — قيم إرشادية عامة، يقدر الطبيب يعدّلها حسب تحليل الشحنة الفعلي
+const FEED_INGREDIENT_CATALOG=[
+  {name:"ذرة صفراء",protein:8.5,energy:3350,fat:3.8,fiber:2.2,calcium:0.02,phos:0.10},
+  {name:"كسب فول الصويا 44%",protein:44,energy:2230,fat:1.5,fiber:6.0,calcium:0.30,phos:0.20},
+  {name:"كسب فول الصويا 48%",protein:48,energy:2350,fat:1.5,fiber:4.5,calcium:0.30,phos:0.22},
+  {name:"ردة قمح ناعمة",protein:15,energy:1300,fat:4.0,fiber:10.0,calcium:0.12,phos:0.35},
+  {name:"دريس برسيم",protein:17,energy:1900,fat:2.5,fiber:22.0,calcium:1.40,phos:0.25},
+  {name:"زيت ذرة/عباد شمس",protein:0,energy:8800,fat:99.9,fiber:0,calcium:0,phos:0},
+  {name:"فوسفات ثنائي الكالسيوم (DCP)",protein:0,energy:0,fat:0,fiber:0,calcium:23.0,phos:18.5},
+  {name:"كربونات كالسيوم (حجر جيري)",protein:0,energy:0,fat:0,fiber:0,calcium:38.0,phos:0},
+  {name:"ملح طعام",protein:0,energy:0,fat:0,fiber:0,calcium:0,phos:0},
+  {name:"بريمكس فيتامينات ومعادن",protein:0,energy:0,fat:0,fiber:0,calcium:0,phos:0},
+  {name:"جلوتين ذرة 60%",protein:60,energy:3900,fat:2.5,fiber:1.0,calcium:0.05,phos:0.40},
+  {name:"دريس فول سوداني",protein:9,energy:1700,fat:2.0,fiber:28.0,calcium:1.10,phos:0.20},
+  // مركزات تجارية جاهزة (بروتين+فيتامينات+معادن مركّزة) — القيم دي متوسط تقريبي عام، وبتختلف فعليًا وبشكل كبير حسب الشركة المصنّعة ونسبة الإدراج المصمّم عليها المنتج (3% أو 5% غالبًا)؛ **الأصح دايمًا مراجعة بطاقة التحليل المطبوعة على عبوة المنتج الفعلي وتعديل الأرقام هنا حسبها**
+  {name:"مركز تسمين 5%",protein:40,energy:2400,fat:5.0,fiber:3.0,calcium:8.0,phos:3.5},
+  {name:"مركز بياض 5%",protein:38,energy:2100,fat:4.0,fiber:3.0,calcium:14.0,phos:3.0}
+];
 let feedmixRowSeq=0;
-function addFeedRow(name,pct,protein,energy,price){
+function feedIngredientOptions(selectedName){
+  let html='<option value="">— اختر خامة —</option>';
+  html+=FEED_INGREDIENT_CATALOG.map(f=>`<option value="${f.name}"${f.name===selectedName?" selected":""}>${f.name}</option>`).join("");
+  html+=`<option value="__other__"${selectedName==="__other__"?" selected":""}>خامة أخرى (اكتب الاسم والتحليل يدويًا)</option>`;
+  return html;
+}
+function onFeedIngredientPick(sel){
+  const tr=sel.closest("tr");
+  const val=sel.value;
+  const nameInput=tr.querySelector(".fm-name");
+  const fields=["protein","energy","fat","fiber","calcium","phos"];
+  if(val==="__other__"){
+    nameInput.style.display="";
+    nameInput.value=""; nameInput.focus();
+    fields.forEach(f=>tr.querySelector(".fm-"+f).value="");
+  }else if(val){
+    const ing=FEED_INGREDIENT_CATALOG.find(f=>f.name===val);
+    nameInput.style.display="none";
+    nameInput.value=val;
+    if(ing){ fields.forEach(f=>tr.querySelector(".fm-"+f).value=ing[f]); }
+  }
+  recalcFeedMix();
+}
+function addFeedRow(name,pct,protein,energy,fat,fiber,calcium,phos,price){
   const id="fr"+(++feedmixRowSeq);
+  const isKnown=FEED_INGREDIENT_CATALOG.some(f=>f.name===name);
+  const cat=isKnown?FEED_INGREDIENT_CATALOG.find(f=>f.name===name):null;
+  if(cat){ // لو الاسم معروف ومفيش قيم تحليل متبعتة صراحة، نجيبها من الكتالوج تلقائيًا
+    if(protein==null) protein=cat.protein;
+    if(energy==null) energy=cat.energy;
+    if(fat==null) fat=cat.fat;
+    if(fiber==null) fiber=cat.fiber;
+    if(calcium==null) calcium=cat.calcium;
+    if(phos==null) phos=cat.phos;
+  }
   const tr=document.createElement("tr");
   tr.id=id;
   tr.innerHTML=`
-    <td style="padding:4px"><input type="text" value="${name||''}" style="width:100%" oninput="recalcFeedMix()"></td>
-    <td style="padding:4px"><input type="number" step="0.1" value="${pct||''}" style="width:100%" oninput="recalcFeedMix()"></td>
-    <td style="padding:4px"><input type="number" step="0.1" value="${protein||''}" style="width:100%" oninput="recalcFeedMix()"></td>
-    <td style="padding:4px"><input type="number" step="1" value="${energy||''}" style="width:100%" oninput="recalcFeedMix()"></td>
-    <td style="padding:4px"><input type="number" step="1" value="${price||''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px">
+      <select class="fm-pick" style="width:100%" onchange="onFeedIngredientPick(this)">${feedIngredientOptions(name?(isKnown?name:"__other__"):"")}</select>
+      <input type="text" class="fm-name" placeholder="اسم الخامة" value="${name&&!isKnown?name:''}" style="width:100%;margin-top:2px;${name&&isKnown?'display:none':''}" oninput="recalcFeedMix()">
+    </td>
+    <td style="padding:4px"><input type="number" step="0.1" class="fm-pct" value="${pct||''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="0.1" class="fm-protein" value="${protein!=null?protein:''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="1" class="fm-energy" value="${energy!=null?energy:''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="0.1" class="fm-fat" value="${fat!=null?fat:''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="0.1" class="fm-fiber" value="${fiber!=null?fiber:''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="0.01" class="fm-calcium" value="${calcium!=null?calcium:''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="0.01" class="fm-phos" value="${phos!=null?phos:''}" style="width:100%" oninput="recalcFeedMix()"></td>
+    <td style="padding:4px"><input type="number" step="1" class="fm-price" value="${price||''}" style="width:100%" oninput="recalcFeedMix()"></td>
     <td style="padding:4px;text-align:center"><button class="btn sm danger" onclick="document.getElementById('${id}').remove();recalcFeedMix()">حذف</button></td>`;
   document.getElementById("feedmixBody").appendChild(tr);
+  if(name && isKnown) tr.querySelector(".fm-pick").value=name;
   recalcFeedMix();
 }
 function recalcFeedMix(){
   const rows=[...document.getElementById("feedmixBody").querySelectorAll("tr")];
-  let totalPct=0, wProtein=0, wEnergy=0, totalCost=0;
+  let totalPct=0, wProtein=0, wEnergy=0, wFat=0, wFiber=0, wCalcium=0, wPhos=0, totalCost=0;
   rows.forEach(tr=>{
-    const inputs=tr.querySelectorAll("input");
-    const pct=parseFloat(inputs[1].value)||0;
-    const protein=parseFloat(inputs[2].value)||0;
-    const energy=parseFloat(inputs[3].value)||0;
-    const price=parseFloat(inputs[4].value)||0;
+    const g=cls=>parseFloat(tr.querySelector(cls).value)||0;
+    const pct=g(".fm-pct");
     totalPct+=pct;
-    wProtein+=pct*protein/100;
-    wEnergy+=pct*energy/100;
-    totalCost+=pct/100*price*10; // price هو سعر الطن، والطن = 1000كجم، فكل 1% إدراج = 10كجم من الطن
+    wProtein+=pct*g(".fm-protein")/100;
+    wEnergy+=pct*g(".fm-energy")/100;
+    wFat+=pct*g(".fm-fat")/100;
+    wFiber+=pct*g(".fm-fiber")/100;
+    wCalcium+=pct*g(".fm-calcium")/100;
+    wPhos+=pct*g(".fm-phos")/100;
+    totalCost+=pct/100*g(".fm-price")*10; // سعر الطن، والطن=1000كجم، فكل 1% إدراج = 10كجم من الطن
   });
   document.getElementById("feedmixTotalPct").textContent=totalPct.toFixed(1);
   document.getElementById("feedmixAvgProtein").textContent=wProtein.toFixed(2);
   document.getElementById("feedmixAvgEnergy").textContent=Math.round(wEnergy);
+  document.getElementById("feedmixAvgFat").textContent=wFat.toFixed(2);
+  document.getElementById("feedmixAvgFiber").textContent=wFiber.toFixed(2);
+  document.getElementById("feedmixAvgCalcium").textContent=wCalcium.toFixed(2);
+  document.getElementById("feedmixAvgPhos").textContent=wPhos.toFixed(2);
   document.getElementById("feedmixTotalCost").textContent=Math.round(totalCost).toLocaleString("ar-EG");
   const warn=document.getElementById("feedmixPctWarn");
   warn.textContent=Math.abs(totalPct-100)<0.05?"":`⚠ لازم يبقى 100% (الفرق ${(totalPct-100).toFixed(1)}%)`;
