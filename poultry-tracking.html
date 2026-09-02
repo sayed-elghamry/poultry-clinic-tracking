@@ -200,6 +200,7 @@
   <button class="tab" data-tab="openflocks" onclick="showTab('openflocks')">🐔 الدورات المفتوحة</button>
   <button class="tab" data-tab="consumption" onclick="showTab('consumption')">📦 استهلاك الأصناف</button>
   <button class="tab" data-tab="feedmix" onclick="showTab('feedmix')">🌾 تكوين العلف</button>
+  <button class="tab" data-tab="serologyanalysis" onclick="showTab('serologyanalysis')">🧪 السيرولوجيا</button>
 </div>
 
 <div class="wrap">
@@ -579,6 +580,9 @@
       </div>
 
       <hr class="divider">
+      <div id="applyOtherHousesWrap"></div>
+
+      <hr class="divider">
       <div class="row">
         <button class="btn pri" id="btnSaveVisit" onclick="saveVisit()">حفظ الزيارة/المتابعة</button>
         <span id="saveMsg" class="hint"></span>
@@ -601,6 +605,7 @@
       <h2>📦 استهلاك صنف معيّن خلال شهر</h2>
       <div class="small" style="color:#777;margin-bottom:8px">
         بيحسب الكمية المطلوبة من الصنف بناءً على نص الجرعة المسجَّل في كل زيارة (الرقم الأول قبل "/" × عدد الأيام)، وبيقسمها على حجم العبوة. الزيارات اللي مش واضح فيها الجرعة أو المدة أو العبوة بتتعلّم "محتاج مراجعة يدوية" بدل ما يتحط رقم تخميني.
+        <br>💡 سيب حقل "اسم الصنف" فاضي واختَر الشهر بس عشان تشوف <b>كل الأدوية المنصرفة خلال الشهر وكمياتها</b> في جدول واحد.
       </div>
       <div class="grid3">
         <div class="field"><label>اسم الصنف</label><input id="cons_drug" list="drugSuggestions" placeholder="اكتب اسم الدواء…"></div>
@@ -647,6 +652,21 @@
         </div>
         <div style="margin-top:6px"><b>تكلفة الطن التقريبية:</b> <span id="feedmixTotalCost">0</span> جنيه</div>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: SEROLOGY ANALYSIS (تحليل نتائج السيرولوجيا عبر كل الزيارات لعنبر معيّن) ============ -->
+  <div class="panel" id="tab-serologyanalysis">
+    <div class="card">
+      <h2>🧪 السيرولوجيا — تحليل النتائج</h2>
+      <div class="small" style="color:#777;margin-bottom:8px">اختر العميل ثم العنبر (أي دورة، مفتوحة أو مقفولة) عشان تشوف كل النتائج السيرولوجية المسجّلة له عبر كل الزيارات مجمّعة حسب المرض، مع اتجاه العيار بين القراءات وتنبيه التجانس الضعيف.</div>
+      <div class="grid3">
+        <div class="field"><label>العميل</label>
+          <select id="sa_client" onchange="onSerologyClientChange()"><option value="">— اختر العميل —</option></select></div>
+        <div class="field"><label>العنبر / الدورة</label>
+          <select id="sa_flock" onchange="renderSerologyAnalysis()"><option value="">— اختر عنبر —</option></select></div>
+      </div>
+      <div id="serologyAnalysisResult" style="margin-top:12px"></div>
     </div>
   </div>
 
@@ -2786,7 +2806,7 @@ function startListeners(){
 function showTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
-  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail",consumption:"tab-consumption",feedmix:"tab-feedmix"};
+  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail",consumption:"tab-consumption",feedmix:"tab-feedmix",serologyanalysis:"tab-serologyanalysis"};
   document.getElementById(map[name]).classList.add("active");
   if(name==="openflocks") renderOpenFlocks();
   if(name==="dashboard") renderDashboard();
@@ -2794,6 +2814,7 @@ function showTab(name){
     addFeedRow("ذرة صفراء",60);
     addFeedRow("كسب فول الصويا 44%",30);
   }
+  if(name==="serologyanalysis") populateSerologyClientSelect();
 }
 /* ---------------------- تذكير التقويم لميعاد المتابعة (.ics قابل للإضافة لأي تقويم على الموبايل/الكمبيوتر) ---------------------- */
 function downloadVisitReminderICS(dateStr, title, note){
@@ -3858,7 +3879,7 @@ function applyTreatmentHistoryDefaults(){
   if(!prevMedField.value.trim() || prevMedField.dataset.autofilled==="1"){
     let text="";
     if(Array.isArray(last.medications) && last.medications.length){
-      text=last.medications.map(m=>`${m.name||""}${m.dose?(" "+m.dose):""}`.trim()).filter(Boolean).join("؛ ")+` (من زيارة ${last.date})`;
+      text=last.medications.map(m=>`${m.drug||""}${m.dose?(" "+m.dose):""}`.trim()).filter(Boolean).join("؛ ")+` (من زيارة ${last.date})`;
     }
     if(!text) text=last.prevMedications||"";
     prevMedField.value=text;
@@ -3967,16 +3988,86 @@ function renderClientOpenFlocks(){
   const clientId=document.getElementById("nv_client").value;
   if(!clientId){ host.innerHTML=""; return; }
   const openFlocks=STATE.flocks.filter(f=>f.clientId===clientId && f.status==="open");
+  const visitDate=document.getElementById("nv_date").value;
+  const doneTodayIds=new Set(
+    visitDate?STATE.visits.filter(v=>v.clientId===clientId && v.date===visitDate).map(v=>v.flockId):[]
+  );
   if(!openFlocks.length){
     host.innerHTML='لا توجد عنابر مفتوحة لهذا العميل حالياً — اكتب اسم عنبر جديد بالحقل فوق وهيتضاف تلقائيًا بعد اختيار التاريخ والعمر.';
     return;
   }
-  host.innerHTML='عنابر العميل المفتوحة: '+
+  const doneCount=openFlocks.filter(f=>doneTodayIds.has(f.id)).length;
+  host.innerHTML=(visitDate?`<div class="small" style="margin-bottom:4px">عنابر اتسجّل لها زيارة النهاردة: <b>${doneCount}</b> من ${openFlocks.length} — لو العميل عنده عنابر تانية، اختارها بالأسفل وسجّل زيارة لها كمان قبل ما تقفل الزيارة</div>`:'')+
+    'عنابر العميل المفتوحة: '+
     openFlocks.map(f=>{
       const followUp=flockNeedsFollowUp(f.id);
-      return `<span class="chip-btn" onclick="pickExistingFlock('${f.id}')" ${followUp?'style="border-color:#c98a1c"':''}>${followUp?'🔄 متابعة — ':'📋 '}${f.houseName||f.flockCode}</span>`;
+      const doneToday=doneTodayIds.has(f.id);
+      const label=doneToday?'✅ اتزار النهاردة — ':(followUp?'🔄 متابعة — ':'📋 ');
+      const style=doneToday?'style="border-color:#1f7a4d;opacity:.7"':(followUp?'style="border-color:#c98a1c"':'');
+      return `<span class="chip-btn" onclick="pickExistingFlock('${f.id}')" ${style}>${label}${f.houseName||f.flockCode}</span>`;
     }).join('')+
     `<span class="chip-btn" onclick="focusNewHouse()">+ عنبر جديد</span>`;
+  renderApplyOtherHouses();
+}
+// عنابر تانية مفتوحة لنفس العميل غير العنبر الحالي — لو الروشتة/التحصينات واحدة لكل العنابر (حالة شائعة: نفس الدفعة مقسّمة على أكتر من عنبر)،
+// نقدر نطبّقها عليهم كلهم من غير ما ندخل بياناتهم من الأول، وناخد بس نفوق كل عنبر وتعداده الحالي لأنهم بيختلفوا حتى لو العلاج واحد
+function renderApplyOtherHouses(){
+  const host=document.getElementById("applyOtherHousesWrap");
+  if(!host) return;
+  const clientId=document.getElementById("nv_client").value;
+  const currentFlockId=window.__matchedFlockId;
+  if(!clientId){ host.innerHTML=""; return; }
+  const currentBirdType=currentVisitBirdType();
+  const others=STATE.flocks.filter(f=>f.clientId===clientId && f.status==="open" && f.id!==currentFlockId && f.birdType===currentBirdType);
+  if(!others.length){ host.innerHTML=""; return; }
+  host.innerHTML=`
+    <h4 style="margin:8px 0 4px">🔁 تطبيق نفس الأدوية والتحصينات وخطة العلاج على عنابر تانية (اختياري)</h4>
+    <div class="small" style="color:#777;margin-bottom:6px">لو نفس الروشتة دي منطبقة على عنابر تانية للعميل ده النهاردة (دفعة واحدة مقسّمة على أكتر من عنبر مثلًا)، اختار العنبر واكتب بس نفوقه وتعداده الحالي — هيتسجل له زيارة منفصلة بنفس الأدوية والتحصينات وخطة العلاج تلقائيًا.</div>
+    <div id="applyOtherHousesRows">`+
+    others.map(f=>{
+      const lastVisit=STATE.visits.filter(v=>v.flockId===f.id).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+      const lastCount=lastVisit&&lastVisit.birdCount!=null?lastVisit.birdCount:(f.birdCount0||"");
+      return `<div class="row" style="align-items:center;gap:8px;margin-bottom:4px">
+        <label style="display:flex;align-items:center;gap:4px;min-width:150px"><input type="checkbox" class="aoh-check" data-flock="${f.id}"> ${f.houseName||f.flockCode}</label>
+        <input type="number" class="aoh-mort" data-flock="${f.id}" placeholder="نفوق اليوم" style="width:110px">
+        <input type="number" class="aoh-count" data-flock="${f.id}" placeholder="تعداد حالي" value="${lastCount}" style="width:110px">
+      </div>`;
+    }).join("")+
+    `</div>`;
+}
+async function applyToOtherHouses(sharedData, date, clientId){
+  const checks=[...document.querySelectorAll("#applyOtherHousesRows .aoh-check:checked")];
+  let count=0;
+  for(const cb of checks){
+    const flockId=cb.dataset.flock;
+    const flock=STATE.flocks.find(f=>f.id===flockId);
+    if(!flock) continue;
+    const mortInput=document.querySelector(`.aoh-mort[data-flock="${flockId}"]`);
+    const countInput=document.querySelector(`.aoh-count[data-flock="${flockId}"]`);
+    const mortalityToday=mortInput?mortInput.value.trim():"";
+    const birdCount=countInput&&countInput.value?parseInt(countInput.value):null;
+    const age=flock.placementDate?Math.round((new Date(date)-new Date(flock.placementDate))/864e5)+1:null;
+    const visit={
+      flockId, clientId, date, ageDays:age, birdCount,
+      visitLocation:"farm",
+      complaint:"", mortalityDaily:mortalityToday, mortalityCum:"", mortalityLog:[], fieldSignals:{},
+      feed:"", feedActualKg:"", waterFactor:"", waterEstimateL:"", feedPattern:"", trays:"", production:"",
+      lastVaccine:sharedData.lastVaccine, recentVaccDisease:sharedData.recentVaccDisease, recentVaccDaysAgo:sharedData.recentVaccDaysAgo,
+      prevMedications:sharedData.prevMedications, opinion:"", treatmentPlan:sharedData.treatmentPlan,
+      confirmedDiagnoses:[], confirmedDiagnosisId:null,
+      prescriptionUrl:sharedData.prescriptionUrl||null, necropsyImageUrl:null,
+      sampleAlive:null, sampleDead:null,
+      diagnosis:{nbirds:0,lesions:[],topDiagnoses:[],composites:[]},
+      medications:sharedData.medications, vaccinesPrescribed:sharedData.vaccinesPrescribed,
+      farmInspection:{temperature:"",humidity:"",lightHours:"",ventilation:"",ammonia:"",litterMoisture:"",density:"",biosecurity:""},
+      appliedFromFlockId:sharedData.primaryFlockId,
+      createdAt:new Date().toISOString()
+    };
+    const ref=await fs.collection("visits").add(visit);
+    STATE.visits.push({id:ref.id,...visit});
+    count++;
+  }
+  return count;
 }
 function focusNewHouse(){
   window.__pinnedFlockId=null;
@@ -3998,6 +4089,7 @@ function pickExistingFlock(flockId){
 }
 
 function checkFlockMatch(){
+  renderClientOpenFlocks(); // نحدّث "عنابر اتزار النهاردة" لو التاريخ اتغيّر
   const clientId=document.getElementById("nv_client").value;
   const house=document.getElementById("nv_house").value;
   const date=document.getElementById("nv_date").value;
@@ -4314,6 +4406,60 @@ function computeMonthlyConsumption(drugName, yearMonth){
   entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
   return entries;
 }
+// كل الأصناف المنصرفة خلال شهر معيّن مجمّعة مع بعض (بدل ما تدوّر على كل صنف لوحده) — لكل صنف: إجمالي الكمية حسب كل عبوة اتكتبت بيها، وعدد العبوات المطلوبة
+function computeAllDrugsMonthlyConsumption(yearMonth){
+  if(!yearMonth) return [];
+  const [y,mo]=yearMonth.split("-");
+  const byDrug={}; // key(lowercase) -> {displayName, visitCount, manualCount, packGroups:{packRaw:{base,family}}}
+  STATE.visits.forEach(v=>{
+    if(!v.date) return;
+    const parts=v.date.split("-");
+    if(parts[0]!==y || parts[1]!==mo) return;
+    (v.medications||[]).forEach(m=>{
+      const name=(m.drug||"").trim();
+      if(!name) return;
+      const key=name.toLowerCase();
+      const g=byDrug[key]||(byDrug[key]={displayName:name, visitCount:0, manualCount:0, packGroups:{}});
+      g.visitCount++;
+      const calc=computeMedicationNeed(m, v.waterEstimateL);
+      if(calc.ok){
+        const pg=g.packGroups[m.pack||""]||(g.packGroups[m.pack||""]={base:0, family:calc.dose.family});
+        pg.base+=calc.totalBase;
+      }else{
+        g.manualCount++;
+      }
+    });
+  });
+  return Object.values(byDrug).sort((a,b)=>a.displayName.localeCompare(b.displayName,"ar"));
+}
+function renderAllDrugsConsumption(month){
+  const host=document.getElementById("consumptionResults");
+  const drugs=computeAllDrugsMonthlyConsumption(month);
+  if(!drugs.length){ host.innerHTML=`<div class="small" style="color:#777;margin-top:10px">مفيش أدوية مسجَّلة في أي زيارة خلال الشهر ده.</div>`; return; }
+  const rows=drugs.map(g=>{
+    const packLines=Object.keys(g.packGroups).map(pk=>{
+      const gg=g.packGroups[pk];
+      const pack=parsePackForConsumption(pk);
+      const need=pack.ok?Math.ceil(gg.base/pack.base):null;
+      return `${baseAmountLabel(gg.base,gg.family)}${pk?` (عبوة "${pk}"${need!=null?` ⇐ ${need} عبوة`:''})`:''}`;
+    }).join('<br>')||'—';
+    return `<tr>
+      <td style="cursor:pointer;color:#1c6b45;text-decoration:underline" onclick="document.getElementById('cons_drug').value='${g.displayName.replace(/'/g,"\\'")}';runConsumptionReport()">${g.displayName}</td>
+      <td style="text-align:center">${g.visitCount}${g.manualCount?` <span style="color:#b00">(⚠️${g.manualCount})</span>`:''}</td>
+      <td>${packLines}</td>
+    </tr>`;
+  }).join("");
+  host.innerHTML=`
+    <div style="margin-top:14px">
+      <div class="small" style="color:#555;margin-bottom:6px">إجمالي الأصناف المستخدمة خلال الشهر: <b>${drugs.length}</b> — اضغط على اسم أي صنف لعرض تفاصيل زياراته بالكامل</div>
+      <div style="overflow-x:auto">
+      <table class="tbl" style="width:100%;font-size:13px">
+        <thead><tr><th>الصنف</th><th>عدد الزيارات</th><th>إجمالي الكمية / العبوات المطلوبة</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+    </div>`;
+}
 function baseAmountLabel(totalBase, family){
   if(family==="mass") return totalBase>=1000 ? (totalBase/1000).toFixed(2)+" كجم" : totalBase.toFixed(1)+" جم";
   if(family==="vol") return totalBase>=1000 ? (totalBase/1000).toFixed(2)+" لتر" : totalBase.toFixed(1)+" سم";
@@ -4424,7 +4570,8 @@ function runConsumptionReport(){
   const drug=document.getElementById("cons_drug").value.trim();
   const month=document.getElementById("cons_month").value;
   const host=document.getElementById("consumptionResults");
-  if(!drug || !month){ host.innerHTML=`<div class="small" style="color:#b00">من فضلك اكتب اسم الصنف واختَر الشهر.</div>`; return; }
+  if(!month){ host.innerHTML=`<div class="small" style="color:#b00">من فضلك اختَر الشهر على الأقل.</div>`; return; }
+  if(!drug){ renderAllDrugsConsumption(month); return; }
   const entries=computeMonthlyConsumption(drug, month);
   LAST_CONSUMPTION_DATA={drug, month, entries};
   if(!entries.length){ host.innerHTML=`<div class="small" style="color:#777;margin-top:10px">لا توجد زيارات مسجَّلة بهذا الصنف خلال الشهر المحدَّد.</div>`; return; }
@@ -5037,6 +5184,86 @@ function dxSeroBonusMap(){
   return map;
 }
 
+/* ---------------------- تاب تحليل السيرولوجيا (تجميع النتائج عبر كل الزيارات لعنبر معيّن) ---------------------- */
+function populateSerologyClientSelect(){
+  const sel=document.getElementById("sa_client");
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— اختر العميل —</option>'+
+    STATE.clients.slice().sort((a,b)=>a.name.localeCompare(b.name,"ar"))
+      .map(c=>`<option value="${c.id}">${c.name} (${BIRD_LABEL[c.birdType]||c.birdType})</option>`).join("");
+  if(cur)sel.value=cur;
+}
+function onSerologyClientChange(){
+  const clientId=document.getElementById("sa_client").value;
+  const flockSel=document.getElementById("sa_flock");
+  if(!clientId){ flockSel.innerHTML='<option value="">— اختر عنبر —</option>'; document.getElementById("serologyAnalysisResult").innerHTML=""; return; }
+  const flocks=STATE.flocks.filter(f=>f.clientId===clientId).sort((a,b)=>new Date(b.placementDate)-new Date(a.placementDate));
+  flockSel.innerHTML='<option value="">— اختر عنبر —</option>'+
+    flocks.map(f=>`<option value="${f.id}">${f.houseName||f.flockCode} ${f.status==='open'?'(مفتوح)':'(مقفول)'}</option>`).join("");
+  document.getElementById("serologyAnalysisResult").innerHTML="";
+}
+function renderSerologyAnalysis(){
+  const flockId=document.getElementById("sa_flock").value;
+  const host=document.getElementById("serologyAnalysisResult");
+  if(!flockId){ host.innerHTML=""; return; }
+  const visits=STATE.visits.filter(v=>v.flockId===flockId).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  // نجمع كل قراءة سيرولوجية مع تاريخ الزيارة اللي اتسجلت فيها
+  const entries=[];
+  visits.forEach(v=>{
+    (v.serology||[]).forEach(s=>{
+      if(!s.diseaseId && !s.disease) return;
+      entries.push({...s, visitDate:v.date});
+    });
+  });
+  if(!entries.length){
+    host.innerHTML='<div class="small" style="color:#777">مفيش نتائج سيرولوجية مسجّلة لهذا العنبر في أي زيارة لحد دلوقتي.</div>';
+    return;
+  }
+  // تجميع حسب المرض
+  const groups={};
+  entries.forEach(e=>{
+    const key=e.diseaseId||e.disease;
+    if(!groups[key]) groups[key]=[];
+    groups[key].push(e);
+  });
+  let html="";
+  Object.keys(groups).forEach(key=>{
+    const list=groups[key].sort((a,b)=>(parseFloat(a.age)||0)-(parseFloat(b.age)||0));
+    const label=list[0].disease||dxName(key);
+    html+=`<div class="card" style="margin-bottom:10px">
+      <h4 style="margin:0 0 6px">${label}</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--surface2,#f4f6f4)">
+          <th style="padding:5px">تاريخ الزيارة</th><th style="padding:5px">العمر</th><th style="padding:5px">الاختبار</th>
+          <th style="padding:5px">العيار GMT</th><th style="padding:5px">CV%</th><th style="padding:5px">الدلالة</th>
+        </tr></thead><tbody>`;
+    list.forEach((e,i)=>{
+      const cvNum=parseFloat(e.cv);
+      const cvFlag=(!isNaN(cvNum)&&cvNum>30)?' <span style="color:#c0392b;font-weight:700">⚠ تجانس ضعيف</span>':'';
+      let trendBadge="";
+      if(i>0){
+        const prevT=parseFloat(list[i-1].titer), curT=parseFloat(e.titer);
+        if(!isNaN(prevT)&&!isNaN(curT)&&prevT>0){
+          const pct=((curT-prevT)/prevT)*100;
+          if(pct>20) trendBadge=' <span style="color:#1f7a4d;font-weight:700">📈 صاعد</span>';
+          else if(pct<-20) trendBadge=' <span style="color:#B7791F;font-weight:700">📉 هابط</span>';
+          else trendBadge=' <span style="color:#5C6B66">➖ مستقر</span>';
+        }
+      }
+      html+=`<tr>
+        <td style="padding:5px;text-align:center">${e.visitDate||'—'}</td>
+        <td style="padding:5px;text-align:center">${e.age??'—'}</td>
+        <td style="padding:5px;text-align:center">${e.test||'—'}</td>
+        <td style="padding:5px;text-align:center">${e.titer??'—'}${trendBadge}</td>
+        <td style="padding:5px;text-align:center">${e.cv??'—'}${cvFlag}</td>
+        <td style="padding:5px;text-align:center">${e.significance==='veryhigh'?'مرتفع جدًا':e.significance==='high'?'مرتفع':e.significance==='normal'?'طبيعي':'—'}</td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  });
+  host.innerHTML=html;
+}
+
 /* ---------------------- قراءة نتائج السيرولوجيا من صورة (عبر Google Apps Script + Gemini) ---------------------- */
 // بعد نشر Apps Script (Web App) حط الرابط بتاعه هنا بدل النص الفاضي:
 const SEROLOGY_OCR_URL = ""; // مثال: "https://script.google.com/macros/s/AKfycb.../exec"
@@ -5250,8 +5477,16 @@ async function saveVisitInner(clientId,date){
     document.getElementById("saveMsg").textContent="✅ تم حفظ التعديلات.";
   }else{
     visit.createdAt=new Date().toISOString();
-    await fs.collection("visits").add(visit);
-    document.getElementById("saveMsg").textContent="✅ تم الحفظ بنجاح.";
+    const primaryRef=await fs.collection("visits").add(visit);
+    STATE.visits.push({id:primaryRef.id,...visit});
+    const clientName=(STATE.clients.find(c=>c.id===clientId)||{}).name||"";
+    const appliedCount=await applyToOtherHouses({
+      medications:visit.medications, vaccinesPrescribed:visit.vaccinesPrescribed,
+      lastVaccine:visit.lastVaccine, recentVaccDisease:visit.recentVaccDisease, recentVaccDaysAgo:visit.recentVaccDaysAgo,
+      prevMedications:visit.prevMedications, treatmentPlan:visit.treatmentPlan,
+      prescriptionUrl:visit.prescriptionUrl, primaryFlockId:flockId
+    }, date, clientId);
+    document.getElementById("saveMsg").innerHTML=`✅ اتحفظت زيارة عنبر <b>${house||'—'}</b> لعميل <b>${clientName}</b>${appliedCount?` + نُسخت نفس الروشتة تلقائيًا لـ<b>${appliedCount}</b> عنبر تاني`:''}. لو عندك عنبر تاني في نفس المزرعة النهاردة، العميل والتاريخ لسه متاختارين — اكتب اسم العنبر الجديد وكمّل عادي.`;
   }
 
   const remRow=document.getElementById("nextVisitReminderRow");
@@ -5314,7 +5549,9 @@ async function saveVisitInner(clientId,date){
   renderClientOpenFlocks();
   cancelVisitEdit();
   dxReset();
-  setTimeout(()=>document.getElementById("saveMsg").textContent="",4000);
+  setTimeout(()=>document.getElementById("saveMsg").textContent="",8000);
+  document.getElementById("applyOtherHousesWrap").innerHTML="";
+  document.getElementById("nv_house").focus();
 }
 function editVisit(id){
   const v=STATE.visits.find(x=>x.id===id); if(!v)return;
