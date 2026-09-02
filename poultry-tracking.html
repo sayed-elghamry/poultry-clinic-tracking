@@ -4313,7 +4313,7 @@ function findAnyAmount(text){
   if(bare) return {amount:1, unit:normUnit(bare[1])};
   return null;
 }
-function parseDoseForConsumption(doseRaw){
+function parseDoseForConsumption(doseRaw, isInjectionCombo){
   const raw=(doseRaw||"").trim();
   if(!raw) return {ok:false, reason:"لا يوجد نص جرعة مسجَّل", raw};
   const text=normalizeDoseDigits(raw);
@@ -4324,15 +4324,21 @@ function parseDoseForConsumption(doseRaw){
   // ده مختلف عن "500 جم/1000 لتر" اللي فيها رقم مياه محدد (بيتجاهل حسب الاتفاق السابق)
   const remainder=trimmedText.slice(lead.consumed);
   const perLiter=/^\s*(?:\/|لكل|في)\s*لتر(?!\s*\/?\s*\d)/.test(remainder) && !/^\s*(?:\/|لكل|في)\s*لتر\s*[\d.,]/.test(remainder);
-  let N=null;
-  const mN=text.match(/(?:لمدة|لمده|\*|×|لـ)\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
-  if(mN) N=parseFloat(mN[1].replace(",","."));
-  else if(/يومين/.test(text)) N=2;
-  if(N==null) return {ok:false, reason:"تعذّر تحديد عدد أيام العلاج من النص", raw, dose:lead};
-  let pattern="daily", multiplier=1, effectiveDays=N, intervalK=null;
-  const mInterval=text.match(/كل\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
-  const isIntermittent=/يوم\s*و\s*(?:أ|ا)?يوم/.test(text) || /متقطع/.test(text);
-  const isTwice=/جرعتين|مرتين/.test(text);
+  let N=null, isOnceOnly=false;
+  if(isInjectionCombo){
+    // أي صنف متعلّم "💉 حقنة مجمّعة" بيتحسب تلقائي كجرعة واحدة، من غير ما نحتاج أي كلمة خاصة في نص الجرعة نفسه
+    N=1; isOnceOnly=true;
+  }else{
+    const mN=text.match(/(?:لمدة|لمده|\*|×|لـ)\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
+    if(mN) N=parseFloat(mN[1].replace(",","."));
+    else if(/يومين/.test(text)) N=2;
+    else if(/مرة\s*واحدة|مره\s*واحده|مرة\s*وحدة|جرعة\s*واحدة|جرعه\s*واحده|دفعة\s*واحدة|دفعه\s*واحده|حقنة\s*واحدة|حقنه\s*واحده/.test(text)){ N=1; isOnceOnly=true; }
+  }
+  if(N==null) return {ok:false, reason:"تعذّر تحديد عدد أيام العلاج من النص — لو دواء بيتاخد مرة واحدة بس (زي الحقن)، اكتب «مرة واحدة» في نص الجرعة أو اختَر «💉 حقنة مجمّعة» بخانة الدمج", raw, dose:lead};
+  let pattern=isOnceOnly?"once":"daily", multiplier=1, effectiveDays=N, intervalK=null;
+  const mInterval=isOnceOnly?null:text.match(/كل\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
+  const isIntermittent=!isOnceOnly && (/يوم\s*و\s*(?:أ|ا)?يوم/.test(text) || /متقطع/.test(text));
+  const isTwice=!isOnceOnly && /جرعتين|مرتين/.test(text);
   if(mInterval){
     intervalK=parseFloat(mInterval[1].replace(",","."));
     effectiveDays=Math.floor(N/intervalK);
@@ -4367,7 +4373,7 @@ function parsePackForConsumption(packRaw){
   return {ok:true, raw, amount:found.amount, unit:found.unit, base, family};
 }
 function computeMedicationNeed(m, dailyWaterEstimateL){
-  const dose=parseDoseForConsumption(m.dose);
+  const dose=parseDoseForConsumption(m.dose, m.comboType==="injection");
   if(!dose.ok) return {ok:false, reason:dose.reason, dose};
   const pack=parsePackForConsumption(m.pack);
   if(!pack.ok) return {ok:false, reason:"الجرعة مفهومة لكن "+pack.reason, dose, pack};
@@ -4386,7 +4392,7 @@ function computeMedicationNeed(m, dailyWaterEstimateL){
   const packagesNeeded=Math.ceil(totalBase/pack.base);
   return {ok:true, dose, pack, totalBase, packagesNeeded, usedWaterEstimate};
 }
-const PATTERN_LABEL={daily:"يومية", interval:"دورية (كل عدة أيام)", intermittent:"متقطعة (يوم وأيوم)", twice:"مرتين يوميًا"};
+const PATTERN_LABEL={daily:"يومية", interval:"دورية (كل عدة أيام)", intermittent:"متقطعة (يوم وأيوم)", twice:"مرتين يوميًا", once:"مرة واحدة"};
 let LAST_CONSUMPTION_DATA=null; // للاستخدام في تصدير الـ PDF
 function computeMonthlyConsumption(drugName, yearMonth){
   const key=(drugName||"").trim().toLowerCase();
