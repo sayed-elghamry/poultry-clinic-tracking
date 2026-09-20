@@ -1037,7 +1037,6 @@ const LESIONS = [
   ["lg_joint_swelling","lg","تورم المفاصل","Joint swelling"],
   ["lg_scales","lg","قشور بالأرجل","Leg scales"],
   ["lg_insect_bite_marks","lg","علامات جلدية بالأرجل شبيهة بلدغ الناموس/الحشرات (موضع دخول الناقل)","Mosquito/insect-bite-like skin marks on the legs (vector feeding site)"],
-  ["lg_muscle_petechiae","lg","نقط نزفية دقيقة منتشرة بعضلات الأرجل (نمط تقريصي)","Widespread pinpoint petechiae in leg muscles (pinprick pattern)"],
 
   ["cc_anemic","cc","شحوب / أنيميا الذبيحة","Anemic carcass"],
   ["cc_icteric","cc","يرقان الجلد والدهن تحت الجلد","Icterus of skin / subcutaneous fat"],
@@ -1217,6 +1216,7 @@ const LESIONS = [
   ["bm_edema","bm","وذمة العضلة","Edema"],
 
   ["tm_hemorrhage","tm","نزف عضلة الفخذ","Thigh muscle hemorrhage"],
+  ["tm_petechiae_widespread","tm","نقط نزفية دقيقة منتشرة بكثافة شديدة (نمط تقريصي وليس نزف كتلي)","Densely widespread pinpoint petechiae in a scattered pinprick pattern (not a bulk hemorrhagic patch)"],
   ["tm_necrosis","tm","نخر عضلة الفخذ","Necrosis"],
   ["tm_cyanosis","tm","ازرقاق العضلة","Cyanosis"],
 
@@ -1269,6 +1269,7 @@ const LESIONS = [
   ["ts_orchitis","ts","التهاب الخصية (تضخم / احتقان)","Orchitis (swelling / congestion)"],
 
   ["pt_hemorrhage","pt","نزف بالغشاء البريتوني","Peritoneal hemorrhage"],
+  ["pt_massive_hemorrhage","pt","امتلاء جزء كبير من التجويف البطني بدم/جلطة نزفية غزيرة حرة (أشد من مجرد نزف سطحي بالغشاء)","Large volume of free hemorrhagic blood/clot filling a substantial portion of the abdominal cavity (more severe than surface peritoneal hemorrhage alone)"],
   ["pt_fibrin","pt","التهاب بريتوني فيبريني","Fibrinous peritonitis"],
   ["pt_effusion","pt","ارتشاح / سوائل حرة بالتجويف","Free abdominal effusion"],
   ["pt_egg_free","pt","بيضة (كاملة أو طرية القشرة) حرة داخل التجويف البطني (تبييض داخلي/Internal layer)","Free complete or soft-shelled egg within the abdominal cavity (internal laying)"],
@@ -1623,8 +1624,8 @@ const DISEASES = [
    test:"مسحة دم (Giemsa) لرؤية السبيروكيت + PCR — يزداد صيفاً مع نشاط قراد Argas الناقل، يُشتبه فيه كتشخيص تفريقي مع النيوكاسل",
    w:{sp_marbled_huge:3,lv_hepatomegaly:1,pv_necrosis:1,cs_leg_paralysis:2,cc_anemic:1,cs_sudden_death:1}},
   {id:"leuco",ar:"الليوكوسيتوزونوسيس (ملاريا الطيور)",en:"Leucocytozoonosis (Avian Malaria)",cls:"دم/طفيلي",aMin:0,aMax:999,
-   test:"مسحة دم (Giemsa) لرؤية الجاميتوسيت + تحديد كثرة الكريات البيضاء — ينتقل بذباب Simulium الأسود أو بعوض Culicoides، يزداد قرب المجاري المائية. ⚠️ الصورة الحادة النزفية (موثّقة ميدانيًا) تشمل: نفوق مفاجئ، نزيف/طفح دموي من الفم، وعلامات جلدية بالأرجل شبيهة بلدغ الناموس (موضع دخول الناقل). عند التشريح: نقط نزفية دقيقة منتشرة بكثافة شديدة (نمط تقريصي، مختلف عن نمط النزف الكتلي بالجامبورو) بكل عضلات الجسم خصوصًا الصدر والأرجل، نزف شديد فوق الكبد و/أو الكلى وداخل التجويف البطني، مع احتمال تضخم وارتفاع الكلى. البرسا سليمة غالبًا — نقطة تفريق مهمة عن الجامبورو (IBD) اللي بتدي نزف/تضخم بالبرسا نفسها",
-   w:{sp_enlarged:2,cs_leukocytosis:2,cc_anemic:2,lv_hepatomegaly:1,cs_leg_paralysis:1,cs_dyspnea:1,cs_sudden_death:2,bm_petechiae_widespread:3,lg_muscle_petechiae:3,lg_insect_bite_marks:2,cs_oral_hemorrhage:2,kd_hemorrhage:2,kd_enlarged:1,kd_swollen:1,lv_hemorrhage:2,pt_hemorrhage:2}},
+   test:"مسحة دم (Giemsa) لرؤية الجاميتوسيت + تحديد كثرة الكريات البيضاء — ينتقل بذباب Simulium الأسود أو بعوض Culicoides، يزداد قرب المجاري المائية. ⚠️ الصورة الحادة النزفية (موثّقة ميدانيًا) تشمل: نفوق مفاجئ، نزيف/طفح دموي من الفم، وعلامات جلدية بالأرجل شبيهة بلدغ الناموس (موضع دخول الناقل). عند التشريح: نقط نزفية دقيقة منتشرة بكثافة شديدة (نمط تقريصي، مختلف عن نمط النزف الكتلي بالجامبورو) بعضلات الجسم خصوصًا الصدر والفخذ، امتلاء جزء كبير من التجويف البطني بدم/جلطة نزفية غزيرة حرة (أشد من مجرد نزف سطحي بالغشاء البريتوني)، نزف شديد فوق الكبد و/أو الكلى، مع احتمال تضخم وارتفاع الكلى. البرسا سليمة غالبًا — نقطة تفريق مهمة عن الجامبورو (IBD) اللي بتدي نزف/تضخم بالبرسا نفسها",
+   w:{sp_enlarged:2,cs_leukocytosis:2,cc_anemic:2,lv_hepatomegaly:1,cs_leg_paralysis:1,cs_dyspnea:1,cs_sudden_death:2,bm_petechiae_widespread:3,tm_petechiae_widespread:3,lg_insect_bite_marks:2,cs_oral_hemorrhage:2,kd_hemorrhage:2,kd_enlarged:1,kd_swollen:1,lv_hemorrhage:2,pt_hemorrhage:1,pt_massive_hemorrhage:3}},
 
   /* ============ DUCK-SPECIFIC DISEASES START (dk_) — من 28 أغسطس 2026: البط بقى "خاص + مشترك" زي الرومي (مش معزول بالكامل)، يعني زيارة بط بتشوف الأمراض دي زائد الأمراض العامة (غير مسبوقة ببادئة نوع) ============ */
 // Duck Production and Management, ch.5 — Viral Diseases: DVH
