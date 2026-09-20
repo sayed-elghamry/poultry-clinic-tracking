@@ -540,9 +540,11 @@
       <div id="medRows"></div>
       <datalist id="drugSuggestions"></datalist>
       <button type="button" class="btn sm" onclick="addMedRow()">+ إضافة دواء</button>
-      <button type="button" class="btn sm" onclick="addVaccRow()">💉 + إضافة تحصين</button>
-      <div id="vaccRows" style="margin-top:8px"></div>
+      <hr class="divider">
+      <h3>التحصينات في هذه الزيارة</h3>
+      <div id="vaccRows"></div>
       <datalist id="vaccBrandSuggestions"></datalist>
+      <button type="button" class="btn sm" onclick="addVaccRow()">💉 + إضافة تحصين</button>
 
       <hr class="divider">
       <h3>الفحص الفني للمزرعة (اختياري)</h3>
@@ -3308,23 +3310,36 @@ async function generateCycleReportPDF(flockId, override){
     finalizePage();
     const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
     pages.forEach((dataUrl,i)=>{ if(i>0)pdf.addPage(); pdf.addImage(dataUrl,"JPEG",0,0,210,297); });
-    // بدل التنزيل التلقائي للـ PDF، بنحفظه داخل البرنامج (Firebase Storage) ونربطه بالدورة —
-    // ده أساس مستقبلي لربطه بكراسة المزرعة (سحب العلف، FCR، إلخ) بدل ما يضيع في مجلد التنزيلات
+    // بنتنزّل الـ PDF على الجهاز فورًا (زي أي تقرير تاني بالبرنامج، مضمون يشتغل من غير إنترنت)
+    // وكمان بنحفظ نسخة على Firebase Storage للمستقبل (ربطها بكراسة المزرعة لاحقًا) — لو الحفظ السحابي فشل، التنزيل المحلي يبقى حصل بالفعل
+    pdf.save(`تقرير-دورة-${flock.houseName||flock.flockCode}-${closedAt.slice(0,10)}.pdf`);
     const pdfBlob=pdf.output("blob");
-    const path=`cycle-reports/${flockId}_${Date.now()}.pdf`;
-    const ref=storage.ref().child(path);
-    await ref.put(pdfBlob, {contentType:"application/pdf"});
-    const url=await ref.getDownloadURL();
-    const generatedAt=new Date().toISOString();
-    await fs.collection("flocks").doc(flockId).update({
-      cycleReportUrl:url, cycleReportGeneratedAt:generatedAt,
-      fcrActual:(fcrActual!=null)?fcrActual:null
-    });
-    const flockLocal=STATE.flocks.find(x=>x.id===flockId);
-    if(flockLocal){ flockLocal.cycleReportUrl=url; flockLocal.cycleReportGeneratedAt=generatedAt; flockLocal.fcrActual=(fcrActual!=null)?fcrActual:null; }
-    if(statusEl) statusEl.innerHTML=`<span style="color:#1c6b45;font-weight:700">✅ اتحفظ التقرير — <a href="${url}" target="_blank">فتحه دلوقتي</a></span>`;
-    alert("✅ اتحفظ تقرير الدورة داخل البرنامج. تقدر تفتحه في أي وقت من صفحة العميل جنب اسم الدورة.");
-    if(typeof currentClientDetailId!=="undefined" && currentClientDetailId===flock.clientId) renderClientDetail(flock.clientId);
+    let cloudOk=true, cloudErrMsg="";
+    try{
+      const path=`cycle-reports/${flockId}_${Date.now()}.pdf`;
+      const ref=storage.ref().child(path);
+      await ref.put(pdfBlob, {contentType:"application/pdf"});
+      const url=await ref.getDownloadURL();
+      const generatedAt=new Date().toISOString();
+      await fs.collection("flocks").doc(flockId).update({
+        cycleReportUrl:url, cycleReportGeneratedAt:generatedAt,
+        fcrActual:(fcrActual!=null)?fcrActual:null
+      });
+      const flockLocal=STATE.flocks.find(x=>x.id===flockId);
+      if(flockLocal){ flockLocal.cycleReportUrl=url; flockLocal.cycleReportGeneratedAt=generatedAt; flockLocal.fcrActual=(fcrActual!=null)?fcrActual:null; }
+      if(statusEl) statusEl.innerHTML=`<span style="color:#1c6b45;font-weight:700">✅ اتنزّل التقرير على جهازك واتحفظت نسخة جوه البرنامج — <a href="${url}" target="_blank">فتحها</a></span>`;
+      if(typeof currentClientDetailId!=="undefined" && currentClientDetailId===flock.clientId) renderClientDetail(flock.clientId);
+    }catch(cloudErr){
+      // التنزيل المحلي أصلاً حصل فوق بنجاح — الفشل هنا في الحفظ السحابي بس، مش في التقرير نفسه
+      console.error("cycle report cloud save error:", cloudErr);
+      cloudOk=false;
+      cloudErrMsg=(cloudErr.message||cloudErr)+(cloudErr.code?" (كود: "+cloudErr.code+")":"");
+    }
+    if(!cloudOk){
+      const msg=`✅ اتنزّل التقرير على جهازك بنجاح — لكن الحفظ السحابي داخل البرنامج فشل: ${cloudErrMsg}`;
+      if(statusEl) statusEl.innerHTML=`<span style="color:#B7791F;font-weight:700">${msg}</span>`;
+      alert(msg);
+    }
   }catch(e){
     console.error("generateCycleReportPDF error:", e);
     const msg="⚠ تعذّر توليد تقرير الدورة: "+(e.message||e)+(e.code?" (كود: "+e.code+")":"");
