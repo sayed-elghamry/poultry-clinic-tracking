@@ -728,6 +728,8 @@ const BREEDS = {
  "ross308":{name:"Ross 308",
   w:{1:57,2:73,3:91,4:111,5:134,6:160,7:189,8:221,9:257,10:296,11:339,12:385,13:434,14:488,15:545,16:605,17:669,18:737,19:808,20:882,21:959,22:1040,23:1123,24:1209,25:1297,26:1388,27:1481,28:1576,29:1673,30:1771,31:1871,32:1973,33:2075,34:2179,35:2283,36:2388,37:2493,38:2599,39:2705,40:2811,41:2917,42:3023,43:3129,44:3234,45:3339},
   fcr:{1:0.210,2:0.379,3:0.515,4:0.627,5:0.718,6:0.793,7:0.856,8:0.909,9:0.955,10:0.995,11:1.030,12:1.062,13:1.090,14:1.117,15:1.142,16:1.165,17:1.187,18:1.209,19:1.230,20:1.250,21:1.270,22:1.290,23:1.309,24:1.328,25:1.348,26:1.367,27:1.386,28:1.405,29:1.424,30:1.443,31:1.462,32:1.480,33:1.499,34:1.518,35:1.537,36:1.556,37:1.575,38:1.594,39:1.613,40:1.632,41:1.651,42:1.670,43:1.689,44:1.709,45:1.728},
+  // عمود "Daily intake (g)" الرسمي من نفس مصدر Aviagen (مش مشتق حسابيًا من فرق FCR التراكمي بين يومين — ده تقليل لأي خطأ تقريب بسيط ممكن ينتج من طريقة الفرق)
+  di:{1:12,2:16,3:19,4:23,5:27,6:31,7:35,8:39,9:44,10:49,11:54,12:60,13:65,14:71,15:77,16:83,17:90,18:96,19:103,20:109,21:116,22:122,23:129,24:136,25:142,26:149,27:155,28:162,29:168,30:174,31:180,32:185,33:191,34:196,35:202,36:207,37:211,38:216,39:221,40:225,41:229,42:232,43:236,44:239,45:243},
   source:"Aviagen — Ross 308 Broiler: Performance Objectives (2014), Male, As-Hatched metric table"},
  "cobb500":{name:"Cobb 500",
   w:{7:185,14:465,21:943,28:1524,35:2191,42:2857},
@@ -868,8 +870,14 @@ function refreshBreedTarget(){
     if(wT && fT && birdCount){
       const feedPerBirdKg=(wT/1000)*fT;
       const totalFeedKg=feedPerBirdKg*birdCount;
-      const cumAt=a=>{a=Math.max(1,a);return (refInterp(b.w,a)/1000)*refInterp(b.fcr,a);};
-      const dailyPerBirdKg=Math.max(0, cumAt(age)-cumAt(age-1));
+      let dailyPerBirdKg;
+      if(b.di){
+        // نستخدم عمود "الاستهلاك اليومي" الرسمي مباشرة لو متوفر (أدق من طريقة الفرق بين FCR تراكمي يومين متتاليين)
+        dailyPerBirdKg=refInterp(b.di,age)/1000;
+      }else{
+        const cumAt=a=>{a=Math.max(1,a);return (refInterp(b.w,a)/1000)*refInterp(b.fcr,a);};
+        dailyPerBirdKg=Math.max(0, cumAt(age)-cumAt(age-1));
+      }
       const dailyTotalKg=dailyPerBirdKg*birdCount;
       window.__lastDailyFeedTargetKg=dailyTotalKg;
       let feedVerdict="";
@@ -3150,6 +3158,7 @@ async function closeFlock(flockId){
    ================================================================================== */
 async function generateCycleReportPDF(flockId, override){
   const flock=STATE.flocks.find(f=>f.id===flockId); if(!flock){ alert("الدورة غير موجودة."); return; }
+  try{
   const client=STATE.clients.find(c=>c.id===flock.clientId);
   const visits=STATE.visits.filter(v=>v.flockId===flockId).sort((a,b)=>(a.ageDays??0)-(b.ageDays??0)||new Date(a.date)-new Date(b.date));
   const actualTotalFeedKg=(override&&override.actualTotalFeedKg!=null)?override.actualTotalFeedKg:flock.actualTotalFeedKg;
@@ -3219,7 +3228,6 @@ async function generateCycleReportPDF(flockId, override){
     return `${g.label} (${g.confirmed?'مؤكَّد':'اشتباه'}) — ${ageRange} — ${outcome}`;
   });
 
-  try{
     const logo=new Image(); logo.src=LOGO_B64;
     let logoOk=true;
     await Promise.race([
@@ -3309,7 +3317,8 @@ async function generateCycleReportPDF(flockId, override){
     alert("✅ اتحفظ تقرير الدورة داخل البرنامج. تقدر تفتحه في أي وقت من صفحة العميل جنب اسم الدورة.");
     if(typeof currentClientDetailId!=="undefined" && currentClientDetailId===flock.clientId) renderClientDetail(flock.clientId);
   }catch(e){
-    alert("⚠ تعذّر توليد تقرير الدورة: "+(e.message||e));
+    console.error("generateCycleReportPDF error:", e);
+    alert("⚠ تعذّر توليد تقرير الدورة: "+(e.message||e)+(e.code?" (كود: "+e.code+")":""));
   }
 }
 function printClientDetail(){
