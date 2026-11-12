@@ -579,8 +579,10 @@
       <div id="seroRows"></div>
       <div class="row" style="align-items:center;gap:8px">
         <button class="btn sm" onclick="addSeroRow()">+ إضافة نتيجة سيرولوجية</button>
-        <button class="btn sm" type="button" onclick="document.getElementById('seroImgInput').click()">📷 قراءة نتيجة من صورة</button>
-        <input type="file" id="seroImgInput" accept="image/*" capture="environment" style="display:none" onchange="handleSeroImage(this.files[0]); this.value='';">
+        <button class="btn sm" type="button" onclick="document.getElementById('seroImgInput').click()">📷 تصوير نتيجة بالكاميرا</button>
+        <input type="file" id="seroImgInput" accept="image/*" capture="environment" style="display:none" onchange="handleSeroFiles(this.files); this.value='';">
+        <button class="btn sm" type="button" onclick="document.getElementById('seroFileInput').click()">🖼 رفع من الموبايل/الكمبيوتر</button>
+        <input type="file" id="seroFileInput" accept="image/*,application/pdf" multiple style="display:none" onchange="handleSeroFiles(this.files); this.value='';">
         <span id="seroOcrStatus" class="hint"></span>
       </div>
 
@@ -5487,48 +5489,71 @@ function matchDiseaseId(name){
   return bestScore>=50?best:"";
 }
 
-async function handleSeroImage(file){
-  if(!file) return;
+// يقرأ ملف واحد (صورة أو PDF) ويضيف صفوف النتائج، ويرجّع عدد النتائج المضافة
+async function readSeroFile(file){
+  let payload=file, mime=file.type||"image/jpeg";
+  if(/^image\//.test(mime) && file.size>1.5*1024*1024){
+    // صور الموبايل/الكمبيوتر الكبيرة: نصغّرها قبل الإرسال (الخط يفضل مقروء)
+    try{ payload=await compressImageFile(file,2000,0.85); mime="image/jpeg"; }catch(_){ payload=file; }
+  }
+  const base64=await fileToBase64(payload);
+  const resp=await fetch(SEROLOGY_OCR_URL,{
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"}, // يتجنب مشاكل CORS preflight مع Apps Script
+    body:JSON.stringify({image:base64, mimeType:mime})
+  });
+  if(!resp.ok) throw new Error("فشل الاتصال بخدمة القراءة (HTTP "+resp.status+")");
+  const data=await resp.json();
+  if(data.error) throw new Error(data.error+(data.details?(" — "+data.details):""));
+  const results=Array.isArray(data.results)?data.results:[];
+  results.forEach(r=>{
+    addSeroRow();
+    const row=document.getElementById("seroRows").lastElementChild;
+    const did=matchDiseaseId(r.disease);
+    if(did) row.querySelector(".s_disease").value=did;
+    if(r.test) row.querySelector(".s_test").value=(String(r.test).toUpperCase().includes("ELISA")?"ELISA":"HI");
+    if(r.age!=null && r.age!=="") row.querySelector(".s_age").value=r.age;
+    if(r.titer_gmt!=null && r.titer_gmt!=="") row.querySelector(".s_titer").value=r.titer_gmt;
+    if(r.cv!=null && r.cv!=="") row.querySelector(".s_cv").value=r.cv;
+    if(r.significance) row.querySelector(".s_sig").value=r.significance;
+  });
+  return results.length;
+}
+
+async function handleSeroFiles(fileList){
+  const files=Array.from(fileList||[]).filter(f=>/^image\//.test(f.type)||f.type==="application/pdf"||/\.(jpe?g|png|webp|heic|pdf)$/i.test(f.name||""));
+  if(!files.length) return;
   const statusEl=document.getElementById("seroOcrStatus");
   if(!SEROLOGY_OCR_URL){
     alert("⚠ لسه ماتحطش رابط Google Apps Script في الكود (SEROLOGY_OCR_URL). راجع تعليمات النشر.");
     return;
   }
-  try{
-    statusEl.textContent="⏳ جارِ قراءة الصورة...";
-    const base64=await fileToBase64(file);
-    const resp=await fetch(SEROLOGY_OCR_URL,{
-      method:"POST",
-      headers:{"Content-Type":"text/plain;charset=utf-8"}, // يتجنب مشاكل CORS preflight مع Apps Script
-      body:JSON.stringify({image:base64, mimeType:file.type||"image/jpeg"})
-    });
-    if(!resp.ok) throw new Error("فشل الاتصال بخدمة القراءة (HTTP "+resp.status+")");
-    const data=await resp.json();
-    if(data.error) throw new Error(data.error+(data.details?(" — "+data.details):""));
-    const results=Array.isArray(data.results)?data.results:[];
-    if(!results.length){
-      statusEl.textContent="";
-      alert("لم يتم العثور على نتائج واضحة في الصورة. من فضلك أضف النتيجة يدويًا أو جرّب صورة أوضح.");
-      return;
-    }
-    results.forEach(r=>{
-      addSeroRow();
-      const row=document.getElementById("seroRows").lastElementChild;
-      const did=matchDiseaseId(r.disease);
-      if(did) row.querySelector(".s_disease").value=did;
-      if(r.test) row.querySelector(".s_test").value=(String(r.test).toUpperCase().includes("ELISA")?"ELISA":"HI");
-      if(r.age!=null && r.age!=="") row.querySelector(".s_age").value=r.age;
-      if(r.titer_gmt!=null && r.titer_gmt!=="") row.querySelector(".s_titer").value=r.titer_gmt;
-      if(r.cv!=null && r.cv!=="") row.querySelector(".s_cv").value=r.cv;
-      if(r.significance) row.querySelector(".s_sig").value=r.significance;
-    });
-    dxCompute();
-    statusEl.textContent="✅ تمت القراءة — راجع الحقول وعدّلها قبل الحفظ ("+results.length+" نتيجة).";
-  }catch(e){
-    statusEl.textContent="";
-    alert("⚠ تعذّرت قراءة الصورة: "+(e.message||e)+"\nمن فضلك أضف النتيجة يدويًا.");
+  let total=0, failed=[];
+  for(let i=0;i<files.length;i++){
+    statusEl.textContent="⏳ جارِ قراءة الملف "+(i+1)+" من "+files.length+"...";
+    try{ total+=await readSeroFile(files[i]); }
+    catch(e){ failed.push((files[i].name||("ملف "+(i+1)))+": "+(e.message||e)); }
   }
+  if(total) dxCompute();
+  if(!total && !failed.length){
+    statusEl.textContent="";
+    alert("لم يتم العثور على نتائج واضحة. من فضلك أضف النتيجة يدويًا أو جرّب ملف/صورة أوضح.");
+    return;
+  }
+  statusEl.textContent=total?("✅ تمت القراءة — راجع الحقول وعدّلها قبل الحفظ ("+total+" نتيجة)."):"";
+  if(failed.length) alert("⚠ تعذّرت قراءة:\n"+failed.join("\n")+"\nمن فضلك أضف النتيجة يدويًا.");
 }
+// توافق مع أي استدعاء قديم بملف واحد
+function handleSeroImage(file){ return handleSeroFiles(file?[file]:[]); }
+
+// سحب وإفلات ملفات النتائج على قسم السيرولوجيا (للكمبيوتر)
+(function(){
+  const box=document.getElementById("seroRows");
+  if(!box||!box.parentElement) return;
+  const zone=box.parentElement;
+  zone.addEventListener("dragover",e=>{ if(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).includes("Files")) e.preventDefault(); });
+  zone.addEventListener("drop",e=>{ if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){ e.preventDefault(); handleSeroFiles(e.dataTransfer.files); } });
+})();
 
 /* ---------------------- اختيار رقم هاتف العميل من جهات الاتصال بالموبايل ---------------------- */
 async function pickClientPhone(){
