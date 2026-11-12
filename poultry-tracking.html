@@ -240,6 +240,13 @@
         <div class="field"><label>العنوان</label><input id="cl_address"></div>
       </div>
       <div class="grid3" style="margin-top:8px">
+        <div class="field"><label>المنطقة/القرية الأساسية <span class="small" style="color:#777">(لتحليل الخريطة الوبائية مستقبلاً)</span></label>
+          <input id="cl_region" list="cl_region_suggest" placeholder="مثال: أبوحماد">
+          <datalist id="cl_region_suggest"></datalist>
+          <div class="small" style="color:#777;margin-top:2px">دي منطقة افتراضية تتملى تلقائيًا لأي عنبر جديد لهذا العميل. لو عنده عنابر في مناطق مختلفة (زي عنبر بالعاشر وعنبر ببنها)، تقدر تغيّر منطقة أي عنبر لوحده من صفحة تعديل الدورة. اكتب نفس اسم المنطقة بالظبط في كل مرة (استخدم الاقتراحات التلقائية) عشان التحليل المستقبلي يجمعهم صح.</div>
+        </div>
+      </div>
+      <div class="grid3" style="margin-top:8px">
         <div class="field"><label>نوع التعامل</label>
           <select id="cl_type"><option value="visit">عميل زيارة</option><option value="monitoring">عميل متابعة (Batch Tracking)</option></select></div>
         <div class="field"><label>نوع الطائر الأساسي</label>
@@ -286,10 +293,12 @@
       <div class="grid2">
         <div class="field"><label>العميل</label>
           <select id="nv_client" onchange="onClientChangeForVisit()"><option value="">— اختر العميل —</option></select></div>
-        <div class="field"><label>اسم العنبر / الموقع</label><input id="nv_house" placeholder="مثال: عنبر 1" oninput="window.__pinnedFlockId=null;checkFlockMatch()">
+        <div class="field"><label>اسم العنبر / الموقع</label><input id="nv_house" list="nv_house_suggest" placeholder="مثال: عنبر 1" oninput="window.__pinnedFlockId=null;checkFlockMatch()">
+          <datalist id="nv_house_suggest"></datalist>
           <div id="clientOpenFlocks" class="hint" style="margin-top:4px"></div>
         </div>
       </div>
+      <div id="houseHistoryBanner"></div>
       <div class="grid3" style="margin-top:8px">
         <div class="field"><label>تاريخ الزيارة</label><input id="nv_date" type="date" onchange="checkFlockMatch()"></div>
         <div class="field"><label>عمر الدورة (يوم)</label><input id="nv_age" type="number" min="0" oninput="checkFlockMatch();refreshBreedTarget()">
@@ -327,6 +336,9 @@
           <div class="field"><label>عدد الطيور الابتدائي</label><input id="nf_birdcount0" type="number" min="1"></div>
           <div class="field"><label>السلالة</label>
             <select id="nf_breed" onchange="refreshBreedTarget()"></select>
+          </div>
+          <div class="field"><label>منطقة هذا العنبر <span class="small" style="color:#777">(لو مختلفة عن منطقة العميل)</span></label>
+            <input id="nf_region" list="cl_region_suggest" oninput="this.dataset.touched='1'" placeholder="تُملأ تلقائيًا من منطقة العميل، وتقدر تعدّلها">
           </div>
         </div>
       </div>
@@ -1486,22 +1498,22 @@ const DISEASES = [
   {id:"lpai",ar:"إنفلونزا الطيور H9 (منخفضة الضراوة)",en:"Low-Path Avian Influenza (H9)",cls:"فيروسي",aMin:0,aMax:999,
    test:"PCR (H9) + عزل — وغالباً مصحوبة بعدوى E. coli ثانوية",
    w:{sp_necro_hrg:3,ts_regression:1,cs_drop_production:2,pt_hemorrhage:2,cs_egg_quality:1,od_salpingitis:2,od_atrophy:2,tr_hemorrhage:1,as_yellow_caseous:1,as_sacculitis:1,sp_hemorrhage:1,tr_catarrh:1,cs_dyspnea:1,cs_sneezing:1,cs_rales:1,ln_congestion:1,ln_pneumonia:1,kd_swollen:1,pn_mottled:1,ov_regression:1,ov_peritonitis:1,cc_cyanotic:1,cc_congested:1,hd_conjunctivitis:1,nb_sinusitis:1,tr_bifurcation:1,lg_lameness:1,cs_white_watery:1}},
-  {id:"ib",ar:"الالتهاب الشعبي المعدي",en:"Infectious Bronchitis",cls:"فيروسي",aMin:0,aMax:999,
+  {id:"ib",ar:"الالتهاب الشعبي المعدي",en:"Infectious Bronchitis",cls:"فيروسي",aMin:0,aMax:999,excludeSpecies:["duck","turkey"],
    test:"PCR (IBV) + HI / ELISA — أفضل عينة: مسحة/نسيج قصبة هوائية طازج في أول أسبوع من العدوى (الفيروس بيوصل لأعلى تركيز يوم 3-5)، وبعد كده الكلى واللوزتين الأعوريتين أفضل لو فات أكتر من أسبوع. مهم: العدوى بتزوّد قابلية/شدة عدوى الكولاي والميكوبلازما والكوريزا والنيوكاسل والإنفلونزا الثانوية بشكل ملحوظ",
    w:{tr_bifurcation:3,kd_nephritis:3,ts_regression:1,kd_urate:3,kd_swollen:2,kd_enlarged:2,ur_distended:2,ur_urate:2,ur_white_casts:2,od_atrophy:2,cs_drop_production:2,cs_egg_quality:2,od_cystic:3,as_foamy:2,as_yellow_caseous:1,ln_pneumonia:1,ov_peritonitis:1,tr_caseous_plug:1,tr_catarrh:1,cs_rales:1,cs_sneezing:1,cs_cough:1,cs_dyspnea:1,cs_nasal_discharge:1,ln_congestion:1,tr_congestion:1,kd_mottled:1,cn_dehydration:1,od_egg_retention:2,od_penguin_stance:3,egg_pimples:2,egg_membranous:1,ov_regression:1,ov_congest_hrg:1,egg_pale_weak_shell:2,egg_wind_egg:1,egg_watery_albumen:2}},
-  {id:"ilt",ar:"الالتهاب الحنجري القصبي",en:"Infectious Laryngotracheitis",cls:"فيروسي",aMin:21,aMax:999,
+  {id:"ilt",ar:"الالتهاب الحنجري القصبي",en:"Infectious Laryngotracheitis",cls:"فيروسي",aMin:21,aMax:999,excludeSpecies:["duck","turkey"],
    test:"PCR (ILTV) + histo (أجسام اندماج داخل نووية)",
    w:{tr_hemorrhage:3,cs_nasal_bloody:2,cs_dyspnea:2,cs_cough:2,hd_conjunctivitis:2,nb_sinusitis:2,tr_caseous_plug:1,tr_fibrin:1,tr_thickened:1,tr_congestion:1,hd_ocular_catarrh:1,tr_catarrh:1,cs_sneezing:1,egg_pale_weak_shell:1}},
-  {id:"ibd",ar:"الجامبورو",en:"Infectious Bursal Disease",cls:"فيروسي",aMin:14,aMax:49,
+  {id:"ibd",ar:"الجامبورو",en:"Infectious Bursal Disease",cls:"فيروسي",aMin:14,aMax:49,excludeSpecies:["duck","turkey"],
    test:"PCR (IBDV) + histo لجراب فابريشيوس — السلالات شديدة الضراوة/العصيّة على المناعة (vvIBDV/nephropathogenic) ممكن تعمل التهاب كلوي واضح وترسب يوريت بجانب الآفة الأساسية بالجراب",
    w:{bu_enlarged:3,bu_hemorrhage:3,tm_hemorrhage:3,bu_gelatinous:3,bm_hemorrhage:3,bu_edematous:2,cn_dehydration:2,ct_necrosis:2,kd_nephritis:2,cs_recumbent_reluctant:2,kd_urate:1,cs_fever:1,bu_atrophied:1,bu_caseous:1,bu_necrosis:1,th_atrophied:1,th_hemorrhage:1,pv_gland_tip_hem:1,bm_dehydration:1,cs_white_watery:1,sp_enlarged:1,ct_caseous:1}},
-  {id:"cav",ar:"فقر الدم الفيروسي (فيروس أنيميا الدجاج)",en:"Chicken Anaemia Virus (CAV)",cls:"فيروسي",aMin:7,aMax:28,
+  {id:"cav",ar:"فقر الدم الفيروسي (فيروس أنيميا الدجاج)",en:"Chicken Anaemia Virus (CAV)",cls:"فيروسي",aMin:7,aMax:28,excludeSpecies:["duck","turkey"],
    test:"PCR (CAV) + فحص دم (هيماتوكريت منخفض) — يُشتبه به خصوصاً مع عدوى مشتركة بالجامبورو (تُضخّم شراسته)، والنفوق غالباً بعمر 2-3 أسابيع بسبب عدوى ثانوية جرثومية/فطرية مصاحبة",
    w:{bmw_pale:3,bmw_hypoplastic:3,th_atrophied:2,kd_pale:2,bu_atrophied:1,sp_atrophied:1,lv_green:1,bm_hemorrhage:1,tm_hemorrhage:1,sk_cellulitis:1}},
-  {id:"mar",ar:"مرض ماريك",en:"Marek's Disease",cls:"فيروسي",aMin:56,aMax:999,
+  {id:"mar",ar:"مرض ماريك",en:"Marek's Disease",cls:"فيروسي",aMin:56,aMax:999,excludeSpecies:["duck","turkey"],
    test:"histo (تكاثر لمفاوي) + PCR (MDV) مع مراعاة العمر",
    w:{nv_nerve_enlarged:3,hd_grey_eye:2,lv_tumors:2,sp_tumors:2,cs_nervous:2,pv_enlarged:1,pv_thickened:1,cn_wasting:1,sp_enlarged:1,sk_follicle_tumor:2}},
-  {id:"leu",ar:"اللوكوزس (سرطان الدم)",en:"Avian Leukosis",cls:"فيروسي",aMin:112,aMax:999,
+  {id:"leu",ar:"اللوكوزس (سرطان الدم)",en:"Avian Leukosis",cls:"فيروسي",aMin:112,aMax:999,excludeSpecies:["duck","turkey"],
    test:"ELISA / PCR (ALV) + histo لتمييزه عن ماريك",
    w:{lv_tumors:3,bu_tumor:2,sp_tumors:2,lv_hepatomegaly:1,sp_enlarged:1,lv_rupture:1,cc_anemic:1,cn_wasting:1}},
   {id:"ovca",ar:"أدينوكارسينوما المبيض / قناة البيض",en:"Ovarian / Oviductal Adenocarcinoma",cls:"ورمي",aMin:365,aMax:999,
@@ -2187,6 +2199,7 @@ function dxEnvBonusMap(){
 function dxScoreAll(){
   const seroBonus=dxSeroBonusMap();
   const envBonus=dxEnvBonusMap();
+  const houseBonus=dxHouseHistoryBonusMap();
   const bt=currentVisitBirdType();
   const species=bt&&bt.startsWith("duck")?"duck":(bt&&bt.startsWith("turkey")?"turkey":(bt==="pigeon"?"pigeon":(bt&&bt.startsWith("ostrich")?"ostrich":"chicken")));
   const rows=[];
@@ -2194,6 +2207,7 @@ function dxScoreAll(){
     const declaredSpecies=d.id.startsWith("dk_")?"duck":(d.id.startsWith("tk_")?"turkey":(d.id.startsWith("pg_")?"pigeon":(d.id.startsWith("os_")?"ostrich":null)));
     if(declaredSpecies && declaredSpecies!==species) continue; // مرض خاص بنوع طائر مختلف
     if(!declaredSpecies && (species==="pigeon"||species==="ostrich")) continue; // الحمام والنعام محتاجين تغطية مخصّصة كاملة، مش هيعتمدوا على أمراض الدجاج/الرومي العامة (تشريح وأوبئة مختلفة جوهريًا) — البط بقى زي الرومي: خاص + مشترك
+    if(!declaredSpecies && d.excludeSpecies && d.excludeSpecies.includes(species)) continue; // مرض "مشترك" لكن معلّم صراحة إنه خاص بالدجاج (زي IB/IBD/ILT/ماريك/CAV/اللوكوزس) ومش منطقي سريريًا للبط/الرومي
     let score=0; const hits=[];
     for(const id of dxSelected){
       const t=d.w[id]||0;
@@ -2205,8 +2219,9 @@ function dxScoreAll(){
     }
     const sb=seroBonus[d.id]||0;
     const eb=envBonus[d.id]||0;
-    score+=sb+eb;
-    if(score>0){hits.sort((a,b)=>b[1]-a[1]); rows.push({d,score,hits,seroBonus:sb,envBonus:eb});}
+    const hb=houseBonus[d.id]||0;
+    score+=sb+eb+hb;
+    if(score>0){hits.sort((a,b)=>b[1]-a[1]); rows.push({d,score,hits,seroBonus:sb,envBonus:eb,houseBonus:hb});}
   }
   rows.sort((a,b)=>b.score-a.score||a.d.ar.localeCompare(b.d.ar,"ar"));
   return rows;
@@ -2331,6 +2346,7 @@ function dxCompute(){
     ${dxVaccReactionFlag(top.d)?`<div class="conf" style="color:var(--accent)">💉 فكّر في رد فعل تحصيني (تحصين حي حديث خلال آخر 5 أيام) قبل ما تحسمها عدوى حقلية — إرشادي عام، راجع توقيت المرض تحديداً</div>`:''}
     ${top.seroBonus?`<div class="conf">🧪 مدعوم بدليل سيرولوجي: +${top.seroBonus.toFixed(1)}</div>`:''}
     ${top.envBonus?`<div class="conf">🌡️ مدعوم بعوامل بيئية (متكررة): +${top.envBonus.toFixed(1)}</div>`:''}
+    ${top.houseBonus?`<div class="conf">🔁 مدعوم بتكرار نفس المشكلة بهذا العنبر في عمر قريب بدورة سابقة: +${top.houseBonus.toFixed(1)}</div>`:''}
     <div class="test"><b>الاختبار التأكيدي:</b> ${top.d.test}</div>
     ${TXPX[top.d.id]?`<div class="test"><b>العلاج:</b> ${TXPX[top.d.id].tx}</div><div class="test"><b>الوقاية:</b> ${TXPX[top.d.id].px}</div>`:''}
     ${second?`<div class="gap">يليه: ${second.d.ar} (${second.score.toFixed(1)}) — الفارق ${gap}%</div>`:''}
@@ -2347,7 +2363,8 @@ function dxCompute(){
     const warn=(dxAgeFlag(r.d)?'<span class="agewarn">⚠ العمر</span>':"")+(dxBirdTypeFlag(r.d)?'<span class="agewarn">⚠ نوع الطائر</span>':"")+(dxVaccReactionFlag(r.d)?'<span class="agewarn">💉 رد فعل تحصيني محتمل</span>':"");
     const why=r.hits.map(h=>`<div style="display:flex;justify-content:space-between"><span>${LES_BY_ID[h[0]][2]}</span><span style="font-weight:700">+${h[1].toFixed(1)}</span></div>`).join("")
       +(r.seroBonus?`<div style="display:flex;justify-content:space-between"><span>🧪 دليل سيرولوجي</span><span style="font-weight:700">+${r.seroBonus.toFixed(1)}</span></div>`:"")
-      +(r.envBonus?`<div style="display:flex;justify-content:space-between"><span>🌡️ عوامل بيئية متكررة</span><span style="font-weight:700">+${r.envBonus.toFixed(1)}</span></div>`:"");
+      +(r.envBonus?`<div style="display:flex;justify-content:space-between"><span>🌡️ عوامل بيئية متكررة</span><span style="font-weight:700">+${r.envBonus.toFixed(1)}</span></div>`:"")
+      +(r.houseBonus?`<div style="display:flex;justify-content:space-between"><span>🔁 تكرار بنفس العنبر</span><span style="font-weight:700">+${r.houseBonus.toFixed(1)}</span></div>`:"");
     return `<div class="cand${idx===0?' lead':''}${dxExpanded.has(r.d.id)?' exp':''}" onclick="dxToggleWhy('${r.d.id}')">
       <div class="row"><span class="nm">${r.d.ar} <span class="en">${r.d.en}</span>${warn}</span><span class="pct">${r.score.toFixed(1)}</span></div>
       <div class="track"><div class="fill" style="width:${pct}%"></div></div>
@@ -2927,6 +2944,7 @@ async function saveClient(){
   const data={
     name, phone:document.getElementById("cl_phone").value.trim(),
     address:document.getElementById("cl_address").value.trim(),
+    region:document.getElementById("cl_region").value.trim(),
     clientType:document.getElementById("cl_type").value,
     birdType:document.getElementById("cl_birdtype").value
   };
@@ -2941,7 +2959,7 @@ async function saveClient(){
     }else{
       data.createdAt=new Date().toISOString();
       await fs.collection("clients").add(data);
-      document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";
+      document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";document.getElementById("cl_region").value="";
     }
   }catch(e){
     alert("⚠ تعذّر حفظ العميل: "+(e.message||e));
@@ -2956,6 +2974,7 @@ function editClient(id){
   document.getElementById("cl_name").value=c.name||"";
   document.getElementById("cl_phone").value=c.phone||"";
   document.getElementById("cl_address").value=c.address||"";
+  document.getElementById("cl_region").value=c.region||"";
   document.getElementById("cl_type").value=c.clientType||"visit";
   document.getElementById("cl_birdtype").value=c.birdType||"broiler";
   document.getElementById("clSaveBtn").textContent="حفظ التعديلات";
@@ -2964,7 +2983,7 @@ function editClient(id){
 }
 function cancelClientEdit(){
   editingClientId=null;
-  document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";
+  document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";document.getElementById("cl_region").value="";
   document.getElementById("cl_type").value="visit"; document.getElementById("cl_birdtype").value="broiler";
   document.getElementById("clSaveBtn").textContent="حفظ العميل";
   document.getElementById("clCancelRow").style.display="none";
@@ -2983,13 +3002,23 @@ async function deleteClient(id){
     if(currentClientDetailId===id){currentClientDetailId=null; showTab("clients");}
   }catch(e){ alert("⚠ تعذّر حذف العميل: "+(e.message||e)); }
 }
+function populateRegionSuggestions(){
+  const dl=document.getElementById("cl_region_suggest");
+  if(!dl) return;
+  const names=new Set();
+  STATE.clients.forEach(c=>{ const n=(c.region||"").trim(); if(n) names.add(n); });
+  dl.innerHTML=[...names].sort((a,b)=>a.localeCompare(b,"ar")).map(n=>`<option value="${n}">`).join("");
+}
 function renderClients(){
+  populateRegionSuggestions();
   const host=document.getElementById("clientsList");
   const q=(document.getElementById("clientSearch")||{}).value?.trim().toLowerCase()||"";
   const list=STATE.clients.filter(c=>!q||c.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
   document.getElementById("clientCount").textContent="("+list.length+")";
   if(!list.length){host.innerHTML='<p class="hint">لا يوجد عملاء بعد.</p>';return;}
-  host.innerHTML=list.map(c=>{
+  const missingRegionCount=list.filter(c=>!(c.region||"").trim()).length;
+  host.innerHTML=(missingRegionCount?`<div class="small" style="color:#8a6d1a;background:#fff3d6;border:1px solid #c98a1c;border-radius:8px;padding:6px 10px;margin-bottom:8px">⚠ ${missingRegionCount} عميل لسه محتاج تحديد "المنطقة" (لازم للخريطة الوبائية مستقبلاً) — دوس "تعديل" على كل عميل وحدد منطقته.</div>`:'')+
+    list.map(c=>{
     const openCount=STATE.flocks.filter(f=>f.clientId===c.id&&f.status==="open").length;
     return `<div class="clientitem">
       <div onclick="openClientDetail('${c.id}')" style="cursor:pointer">
@@ -2998,6 +3027,7 @@ function renderClients(){
           <span class="chip ${c.clientType==='monitoring'?'monitor':'visit'}">${c.clientType==='monitoring'?'متابعة':'زيارة'}</span>
           <span class="chip closed">${BIRD_LABEL[c.birdType]||c.birdType}</span>
           ${openCount?`<span class="chip open">${openCount} دورة مفتوحة</span>`:''}
+          ${c.region?`<span class="chip">📍 ${c.region}</span>`:'<span class="chip" style="background:#fff3d6;color:#8a6d1a;border:1px solid #c98a1c">⚠ بدون منطقة</span>'}
           ${c.phone?' · '+c.phone:''}
         </div>
       </div>
@@ -3022,7 +3052,7 @@ function renderClientDetail(id){
   document.getElementById("cd_name").textContent=c.name;
   document.getElementById("cd_meta").innerHTML=
     `<span class="chip ${c.clientType==='monitoring'?'monitor':'visit'}">${c.clientType==='monitoring'?'عميل متابعة':'عميل زيارة'}</span>
-     <span class="chip closed">${BIRD_LABEL[c.birdType]||c.birdType}</span> ${c.phone||''} ${c.address?'· '+c.address:''}`;
+     <span class="chip closed">${BIRD_LABEL[c.birdType]||c.birdType}</span> ${c.region?`<span class="chip">📍 ${c.region}</span>`:''} ${c.phone||''} ${c.address?'· '+c.address:''}`;
   const flocks=STATE.flocks.filter(f=>f.clientId===id).sort((a,b)=>new Date(b.placementDate)-new Date(a.placementDate));
   const visitsAll=STATE.visits.filter(v=>v.clientId===id);
   const openCount=flocks.filter(f=>f.status==="open").length;
@@ -3040,6 +3070,7 @@ function renderClientDetail(id){
       return `<div class="flockitem">
         <div class="grid3">
           <div class="field"><label>اسم العنبر/الموقع</label><input id="ef_house" value="${f.houseName||''}"></div>
+          <div class="field"><label>منطقة هذا العنبر</label><input id="ef_region" list="cl_region_suggest" value="${f.region||''}"></div>
           <div class="field"><label>تاريخ التحميل</label><input id="ef_placement" type="date" value="${f.placementDate||''}"></div>
           <div class="field"><label>نوع الطائر</label>
             <select id="ef_birdtype">
@@ -3071,7 +3102,7 @@ function renderClientDetail(id){
       <div class="ci-t">${f.houseName||'—'} <span class="small">(${f.flockCode})</span>
         <span class="chip ${f.status==='open'?'open':'closed'}">${f.status==='open'?'مفتوح':'مغلق'}</span>
         ${f.status==='open'&&flockNeedsFollowUp(f.id)?'<span class="chip" style="background:#fff3d6;color:#8a6d1a;border:1px solid #c98a1c">🔄 متابعة — محتاج إكمال بروتوكول العلاج</span>':''}</div>
-      <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · ${cycleTxt} · عدد ابتدائي: ${f.birdCountInitial||'—'}</div>
+      <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · ${cycleTxt} · عدد ابتدائي: ${f.birdCountInitial||'—'}${f.region?' · 📍 '+f.region:''}</div>
       <div class="row" style="margin-top:6px">
         ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:`<button class="btn sm pri" onclick="generateCycleReportPDF('${f.id}')">📄 ${f.cycleReportUrl?'إعادة توليد التقرير':'توليد تقرير الدورة الشامل'}</button>`}
         ${f.status==='closed'&&f.cycleReportUrl?`<a class="btn sm" href="${f.cycleReportUrl}" target="_blank">🔗 عرض تقرير الدورة المحفوظ${f.fcrActual!=null?' (FCR '+f.fcrActual.toFixed(2)+')':''}</a>`:''}
@@ -3114,12 +3145,13 @@ function cancelFlockEdit(){ editingFlockId=null; renderClientDetail(currentClien
 async function saveFlockEdit(id){
   const client=STATE.flocks.find(f=>f.id===id);
   const houseName=document.getElementById("ef_house").value.trim();
+  const region=(document.getElementById("ef_region").value||"").trim();
   const placementDate=document.getElementById("ef_placement").value;
   const birdType=document.getElementById("ef_birdtype").value;
   const birdCountInitial=document.getElementById("ef_birdcount0").value?parseInt(document.getElementById("ef_birdcount0").value):null;
   const status=document.getElementById("ef_status").value;
   try{
-    await fs.collection("flocks").doc(id).update({houseName,placementDate,birdType,birdCountInitial,status});
+    await fs.collection("flocks").doc(id).update({houseName,region,placementDate,birdType,birdCountInitial,status});
     editingFlockId=null;
   }catch(e){
     alert("⚠ تعذّر حفظ تعديل الدورة: "+(e.message||e));
@@ -3865,6 +3897,74 @@ function findMatchingFlock(clientId, houseName, dateStr, ageDays, birdCount){
   return {match:null,reason:"disqualified",warnings};
 }
 
+/* ---------------------- تحليل الأنماط المتكررة بنفس العنبر عبر الدورات (نفس العميل + نفس اسم العنبر + عمر قريب) ---------------------- */
+const HOUSE_HISTORY_AGE_WINDOW=7; // بالأيام — فرق العمر المسموح بيه عشان نعتبر إنها "نفس الفترة" في الدورة
+function sameHouseFlocks(clientId, houseName, excludeFlockId){
+  const norm=normHouseName(houseName);
+  if(!clientId || !norm) return [];
+  return STATE.flocks.filter(f=>f.clientId===clientId && f.id!==excludeFlockId && normHouseName(f.houseName)===norm);
+}
+// بيرجع كل مرة اتشخّص فيها مرض (تشخيص مؤكَّد) في زيارة بدورة سابقة لنفس العنبر، في عمر قريب من العمر الحالي
+function houseHistoryMatches(clientId, houseName, ageDays, excludeFlockId){
+  if(ageDays==null || isNaN(ageDays)) return [];
+  const flocks=sameHouseFlocks(clientId, houseName, excludeFlockId);
+  if(!flocks.length) return [];
+  const results=[];
+  flocks.forEach(f=>{
+    STATE.visits.filter(v=>v.flockId===f.id && v.ageDays!=null && (v.confirmedDiagnoses||[]).length).forEach(v=>{
+      const diff=Math.abs(v.ageDays-ageDays);
+      if(diff<=HOUSE_HISTORY_AGE_WINDOW){
+        v.confirmedDiagnoses.forEach(dx=>{
+          results.push({flock:f, visit:v, diagnosisId:dx.id, diagnosisLabel:dx.label, ageDiff:diff});
+        });
+      }
+    });
+  });
+  results.sort((a,b)=>a.ageDiff-b.ageDiff);
+  return results;
+}
+// bonus بسيط لمحرّك الترجيح (dxScoreAll) — بيرفع ترتيب أي مرض اتكرر في نفس العنبر بعمر قريب في دورة سابقة
+function dxHouseHistoryBonusMap(){
+  const map={};
+  const clientId=document.getElementById("nv_client")?.value;
+  const house=document.getElementById("nv_house")?.value;
+  const ageVal=document.getElementById("nv_age")?.value;
+  const age=ageVal?parseInt(ageVal,10):null;
+  if(!clientId||!house||age==null||isNaN(age)) return map;
+  houseHistoryMatches(clientId,house,age,window.__matchedFlockId||null).forEach(m=>{
+    if(!m.diagnosisId) return; // تشخيص مكتوب يدويًا (مش موجود في قاعدة DISEASES) — مينفعش نضيف له bonus بالمعرّف
+    const bonus=m.ageDiff<=3?1.5:1;
+    map[m.diagnosisId]=(map[m.diagnosisId]||0)+bonus;
+  });
+  return map;
+}
+function renderHouseHistoryBanner(){
+  const host=document.getElementById("houseHistoryBanner");
+  if(!host) return;
+  const clientId=document.getElementById("nv_client").value;
+  const house=document.getElementById("nv_house").value;
+  const ageVal=document.getElementById("nv_age").value;
+  const age=ageVal?parseInt(ageVal,10):null;
+  if(!clientId || !normHouseName(house) || age==null || isNaN(age)){ host.innerHTML=""; return; }
+  const matches=houseHistoryMatches(clientId, house, age, window.__matchedFlockId||null);
+  if(!matches.length){ host.innerHTML=""; return; }
+  const byDisease={};
+  matches.forEach(m=>{
+    const key=m.diagnosisId||("custom:"+m.diagnosisLabel);
+    const g=byDisease[key]||(byDisease[key]={label:m.diagnosisLabel, cycles:new Set(), minDiff:m.ageDiff});
+    g.cycles.add(m.flock.flockCode||m.flock.houseName);
+    g.minDiff=Math.min(g.minDiff,m.ageDiff);
+  });
+  const items=Object.values(byDisease).sort((a,b)=>a.minDiff-b.minDiff).map(g=>
+    `<li><b>${g.label}</b> — ظهر في ${g.cycles.size} دورة سابقة بنفس العنبر (أقرب فارق عمر: ${g.minDiff} يوم)</li>`
+  ).join("");
+  host.innerHTML=`<div class="banner warn">
+    <b>🔁 تنبيه نمط متكرر بنفس العنبر:</b> في دورات سابقة بنفس العنبر، ظهرت المشاكل دي في أعمار قريبة من العمر الحالي (${age} يوم):
+    <ul style="margin:6px 0 0 18px">${items}</ul>
+    <span class="small">يرجّح وجود مشكلة متكررة بالعنبر نفسه (بيئية/إدارية/بيوأمنية) مش حالة عرضية — يُنصح بمراجعة التهوية والكثافة وبرنامج التطهير بين الدورات.</span>
+  </div>`;
+}
+
 function onClientChangeForVisit(){ renderClientOpenFlocks(); checkFlockMatch(); applyTreatmentHistoryDefaults(); }
 
 // لو العميل "متابعة" وعنده زيارة سابقة، نجيب التاريخ العلاجي/الوقائي (الأدوية السابقة + التحصينات)
@@ -4017,18 +4117,45 @@ function flockNeedsFollowUp(flockId){
   if(!last) return false;
   return (last.medications||[]).some(m=>!m.response || !m.responseConfirmed);
 }
+function normHouseName(h){ return (h||"").trim().replace(/\s+/g," "); }
+// كل أسماء العنابر (مفتوحة ومقفولة) اللي استُخدمت قبل كده لهذا العميل — نقترحها عشان الطبيب يكتب نفس الاسم بالظبط كل مرة
+// (بدون ده، اختلاف بسيط في كتابة اسم العنبر بين دورة وتانية بيكسر مطابقة العنبر وتحليل الأنماط المتكررة)
+function populateHouseSuggestions(clientId){
+  const dl=document.getElementById("nv_house_suggest");
+  if(!dl) return;
+  if(!clientId){ dl.innerHTML=""; return; }
+  const names=new Set();
+  STATE.flocks.filter(f=>f.clientId===clientId).forEach(f=>{ const n=normHouseName(f.houseName); if(n) names.add(n); });
+  dl.innerHTML=[...names].sort((a,b)=>a.localeCompare(b,"ar")).map(n=>`<option value="${n}">`).join("");
+}
+function useHouseName(name){
+  window.__pinnedFlockId=null;
+  const h=document.getElementById("nv_house");
+  h.value=name; h.focus();
+  checkFlockMatch();
+}
 function renderClientOpenFlocks(){
   const host=document.getElementById("clientOpenFlocks");
   if(!host) return;
   const clientId=document.getElementById("nv_client").value;
+  populateHouseSuggestions(clientId);
   if(!clientId){ host.innerHTML=""; return; }
   const openFlocks=STATE.flocks.filter(f=>f.clientId===clientId && f.status==="open");
   const visitDate=document.getElementById("nv_date").value;
   const doneTodayIds=new Set(
     visitDate?STATE.visits.filter(v=>v.clientId===clientId && v.date===visitDate).map(v=>v.flockId):[]
   );
+  // عنابر اتقفلت قبل كده لهذا العميل (أسماء مميّزة) — بنقترحها عشان الدورة الجديدة في نفس العنبر تاخد نفس الاسم بالظبط
+  const closedFlocks=STATE.flocks.filter(f=>f.clientId===clientId && f.status==="closed" && normHouseName(f.houseName));
+  const openHouseNames=new Set(openFlocks.map(f=>normHouseName(f.houseName)));
+  const closedHouseNames=[...new Map(closedFlocks.filter(f=>!openHouseNames.has(normHouseName(f.houseName))).map(f=>[normHouseName(f.houseName),f])).values()]
+    .sort((a,b)=>new Date(b.placementDate)-new Date(a.placementDate));
+  const closedChips=closedHouseNames.length?
+    `<div style="margin-top:6px">🏚 عنابر سابقة (مقفولة) لهذا العميل — دوس عشان تبدأ دورة جديدة بنفس اسم العنبر: `+
+    closedHouseNames.map(f=>`<span class="chip-btn" onclick="useHouseName('${normHouseName(f.houseName).replace(/'/g,"\\'")}')">${f.houseName}</span>`).join('')+
+    `</div>`:'';
   if(!openFlocks.length){
-    host.innerHTML='لا توجد عنابر مفتوحة لهذا العميل حالياً — اكتب اسم عنبر جديد بالحقل فوق وهيتضاف تلقائيًا بعد اختيار التاريخ والعمر.';
+    host.innerHTML='لا توجد عنابر مفتوحة لهذا العميل حالياً — اكتب اسم عنبر جديد بالحقل فوق وهيتضاف تلقائيًا بعد اختيار التاريخ والعمر.'+closedChips;
     return;
   }
   const doneCount=openFlocks.filter(f=>doneTodayIds.has(f.id)).length;
@@ -4041,7 +4168,7 @@ function renderClientOpenFlocks(){
       const style=doneToday?'style="border-color:#1f7a4d;opacity:.7"':(followUp?'style="border-color:#c98a1c"':'');
       return `<span class="chip-btn" onclick="pickExistingFlock('${f.id}')" ${style}>${label}${f.houseName||f.flockCode}</span>`;
     }).join('')+
-    `<span class="chip-btn" onclick="focusNewHouse()">+ عنبر جديد</span>`;
+    `<span class="chip-btn" onclick="focusNewHouse()">+ عنبر جديد</span>`+closedChips;
   renderApplyOtherHouses();
 }
 // عنابر تانية مفتوحة لنفس العميل غير العنبر الحالي — لو الروشتة/التحصينات واحدة لكل العنابر (حالة شائعة: نفس الدفعة مقسّمة على أكتر من عنبر)،
@@ -4148,7 +4275,8 @@ function checkFlockMatch(){
     }
   }
 
-  if(!clientId||!date){ banner.innerHTML=""; newFields.style.display="none"; updateProdVisibility(); refreshBreedTarget(); applyTreatmentHistoryDefaults(); return; }
+  if(!clientId||!date){ banner.innerHTML=""; newFields.style.display="none"; updateProdVisibility(); refreshBreedTarget(); applyTreatmentHistoryDefaults(); document.getElementById("houseHistoryBanner").innerHTML=""; return; }
+  renderHouseHistoryBanner();
 
   // لو المستخدم اختار عنبر مفتوح صراحةً من القائمة السريعة، استخدمه مباشرة (تطابق مؤكد، بدون تخمين بالعمر)
   if(window.__pinnedFlockId){
@@ -4188,6 +4316,8 @@ function checkFlockMatch(){
     newFields.style.display="block";
     const client=STATE.clients.find(c=>c.id===clientId);
     if(client && !document.getElementById("nf_birdtype").dataset.touched){ document.getElementById("nf_birdtype").value=client.birdType; populateBreedSelect(); updateProdVisibility(); }
+    const nfRegionEl=document.getElementById("nf_region");
+    if(client && nfRegionEl && !nfRegionEl.dataset.touched){ nfRegionEl.value=client.region||""; }
     if(!document.getElementById("nf_placement").value && age!=null){
       const implied=new Date(new Date(date).getTime()-(age-1)*864e5).toISOString().slice(0,10);
       document.getElementById("nf_placement").value=implied;
@@ -4367,7 +4497,7 @@ function parseDoseForConsumption(doseRaw, isInjectionCombo){
     const mN=text.match(/(?:لمدة|لمده|\*|×|لـ)\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
     if(mN) N=parseFloat(mN[1].replace(",","."));
     else if(/يومين/.test(text)) N=2;
-    else if(/مرة\s*واحدة|مره\s*واحده|مرة\s*وحدة|جرعة\s*واحدة|جرعه\s*واحده|دفعة\s*واحدة|دفعه\s*واحده|حقنة\s*واحدة|حقنه\s*واحده/.test(text)){ N=1; isOnceOnly=true; }
+    else if(/(?:مر[ةه]|جرع[ةه]|دفع[ةه]|حقن[ةه]?)\s*وا?حد[ةه]?/.test(text)){ N=1; isOnceOnly=true; }
   }
   if(N==null) return {ok:false, reason:"تعذّر تحديد عدد أيام العلاج من النص — لو دواء بيتاخد مرة واحدة بس (زي الحقن)، اكتب «مرة واحدة» في نص الجرعة أو اختَر «💉 حقنة مجمّعة» بخانة الدمج", raw, dose:lead};
   let pattern=isOnceOnly?"once":"daily", multiplier=1, effectiveDays=N, intervalK=null;
@@ -4407,6 +4537,15 @@ function parsePackForConsumption(packRaw){
   const family=UNIT_FAMILY[found.unit]||null;
   return {ok:true, raw, amount:found.amount, unit:found.unit, base, family};
 }
+/* مفتاح تجميع العبوة: بيوحّد نفس حجم العبوة الفعلي حتى لو اختلفت صياغة النص بين سطر وسطر
+   (مثال: "علبة 100 جم" و"100 جم" و"عبوة 100جرام" لازم تتجمّع مع بعض كعبوة واحدة، بما فيها
+   لما يكون نفس الصنف جزء منه حقنة وجزء منه في المياه) */
+function packGroupKeyInfo(packRaw){
+  const label=(packRaw||"").trim();
+  const p=parsePackForConsumption(packRaw);
+  if(p.ok) return {key:"amt:"+p.family+":"+p.base, label, pack:p};
+  return {key:"raw:"+label.toLowerCase(), label, pack:p};
+}
 function computeMedicationNeed(m, dailyWaterEstimateL){
   const dose=parseDoseForConsumption(m.dose, m.comboType==="injection");
   if(!dose.ok) return {ok:false, reason:dose.reason, dose};
@@ -4441,7 +4580,7 @@ function computeMonthlyConsumption(drugName, yearMonth){
     (v.medications||[]).forEach(m=>{
       if((m.drug||"").trim().toLowerCase()!==key) return;
       const client=STATE.clients.find(c=>c.id===v.clientId);
-      entries.push({date:v.date, clientName:client?client.name:"—", doseRaw:m.dose||"", packRaw:m.pack||"", calc:computeMedicationNeed(m, v.waterEstimateL)});
+      entries.push({date:v.date, clientName:client?client.name:"—", doseRaw:m.dose||"", packRaw:m.pack||"", comboType:m.comboType||"", calc:computeMedicationNeed(m, v.waterEstimateL)});
     });
   });
   entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -4464,8 +4603,9 @@ function computeAllDrugsMonthlyConsumption(yearMonth){
       g.visitCount++;
       const calc=computeMedicationNeed(m, v.waterEstimateL);
       if(calc.ok){
-        const pg=g.packGroups[m.pack||""]||(g.packGroups[m.pack||""]={base:0, family:calc.dose.family});
-        pg.base+=calc.totalBase;
+        const gk=packGroupKeyInfo(m.pack);
+        const pg=g.packGroups[gk.key]||(g.packGroups[gk.key]={base:0, family:calc.dose.family, labels:new Set(), count:0, pack:gk.pack});
+        pg.base+=calc.totalBase; pg.count++; pg.labels.add(gk.label||'—');
       }else{
         g.manualCount++;
       }
@@ -4478,11 +4618,13 @@ function renderAllDrugsConsumption(month){
   const drugs=computeAllDrugsMonthlyConsumption(month);
   if(!drugs.length){ host.innerHTML=`<div class="small" style="color:#777;margin-top:10px">مفيش أدوية مسجَّلة في أي زيارة خلال الشهر ده.</div>`; return; }
   const rows=drugs.map(g=>{
-    const packLines=Object.keys(g.packGroups).map(pk=>{
-      const gg=g.packGroups[pk];
-      const pack=parsePackForConsumption(pk);
+    const packLines=Object.keys(g.packGroups).map(key=>{
+      const gg=g.packGroups[key];
+      const pack=gg.pack;
       const need=pack.ok?Math.ceil(gg.base/pack.base):null;
-      return `${baseAmountLabel(gg.base,gg.family)}${pk?` (عبوة "${pk}"${need!=null?` ⇐ ${need} عبوة`:''})`:''}`;
+      const labelText=[...gg.labels].join(' / ');
+      const mergedNote=gg.count>1?` — مجمّع من ${gg.count} سطر`:'';
+      return `${baseAmountLabel(gg.base,gg.family)}${labelText?` (عبوة "${labelText}"${mergedNote}${need!=null?` ⇐ ${need} عبوة`:''})`:''}`;
     }).join('<br>')||'—';
     return `<tr>
       <td style="cursor:pointer;color:#1c6b45;text-decoration:underline" onclick="document.getElementById('cons_drug').value='${g.displayName.replace(/'/g,"\\'")}';runConsumptionReport()">${g.displayName}</td>
@@ -4616,35 +4758,38 @@ function runConsumptionReport(){
   const entries=computeMonthlyConsumption(drug, month);
   LAST_CONSUMPTION_DATA={drug, month, entries};
   if(!entries.length){ host.innerHTML=`<div class="small" style="color:#777;margin-top:10px">لا توجد زيارات مسجَّلة بهذا الصنف خلال الشهر المحدَّد.</div>`; return; }
-  // تجميع حسب نص العبوة (لأن حجم العبوة ممكن يختلف من روشتة لأخرى لنفس الصنف)
-  const packGroups={}; // packRaw -> {base, family, packagesNeeded(recompute at end), okCount}
-  let totalOkBase=null, totalFamily=null, manualCount=0;
+  // تجميع حسب حجم العبوة الفعلي (موحَّد بالقيمة، مش بنص الكتابة) — ده اللي يضمن إن نفس الصنف
+  // لما يكون جزء منه بالحقن وجزء منه في المياه (بنفس حجم العبوة) يتجمّعوا في إجمالي واحد صحيح،
+  // بدل ما يظهروا كأنهم صنفين مختلفين بعدد عبوات متفرّق لكل سطر لوحده.
+  const packGroups={}; // normKey -> {base, family, labels:Set, count, pack}
+  let manualCount=0;
   const rows=entries.map(e=>{
     const c=e.calc;
     if(c.ok){
-      const g=packGroups[e.packRaw]||(packGroups[e.packRaw]={base:0, family:c.dose.family});
-      g.base+=c.totalBase;
-      if(totalFamily===null) totalFamily=c.dose.family;
-      if(totalFamily===c.dose.family) totalOkBase=(totalOkBase||0)+c.totalBase;
+      const gk=packGroupKeyInfo(e.packRaw);
+      const g=packGroups[gk.key]||(packGroups[gk.key]={base:0, family:c.dose.family, labels:new Set(), count:0, pack:gk.pack});
+      g.base+=c.totalBase; g.count++; g.labels.add(gk.label||'—');
+      const comboIcon=e.comboType==='injection'?' 💉':(e.comboType==='water'?' 💧':'');
       return `<tr>
-        <td>${e.date}</td><td>${e.clientName}</td><td>${e.doseRaw}</td><td>${e.packRaw||'—'}</td>
+        <td>${e.date}</td><td>${e.clientName}</td><td>${e.doseRaw}${comboIcon}</td><td>${e.packRaw||'—'}</td>
         <td>${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}${c.dose.perLiter?` (تركيز/لتر — ${c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):''}ماء ${(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)} لتر/يوم)`:''}</td>
         <td>${baseAmountLabel(c.totalBase, c.dose.family)}</td>
-        <td>${c.packagesNeeded} عبوة</td>
       </tr>`;
     } else {
       manualCount++;
       return `<tr style="background:#fff3f3">
         <td>${e.date}</td><td>${e.clientName}</td><td>${e.doseRaw}</td><td>${e.packRaw||'—'}</td>
-        <td colspan="3" style="color:#b00">⚠️ محتاج مراجعة يدوية — ${c.reason}</td>
+        <td colspan="2" style="color:#b00">⚠️ محتاج مراجعة يدوية — ${c.reason}</td>
       </tr>`;
     }
   }).join("");
-  const packSummary=Object.keys(packGroups).map(pk=>{
-    const g=packGroups[pk];
-    const pack=parsePackForConsumption(pk);
+  const packSummary=Object.keys(packGroups).map(key=>{
+    const g=packGroups[key];
+    const pack=g.pack;
     const need=pack.ok ? Math.ceil(g.base/pack.base) : null;
-    return `<li>عبوة "${pk}": إجمالي ${baseAmountLabel(g.base, g.family)}${need!=null?` ⇐ يحتاج <b>${need} عبوة</b>`:''}</li>`;
+    const labelText=[...g.labels].join(" / ");
+    const mergedNote=g.count>1?` (مجمّع من ${g.count} سطر)`:'';
+    return `<li>عبوة "${labelText}"${mergedNote}: إجمالي ${baseAmountLabel(g.base, g.family)}${need!=null?` ⇐ يحتاج <b>${need} عبوة</b>`:''}</li>`;
   }).join("");
   host.innerHTML=`
     <div style="margin-top:14px">
@@ -4652,10 +4797,12 @@ function runConsumptionReport(){
         إجمالي عدد الزيارات المسجَّلة لهذا الصنف: <b>${entries.length}</b>
         ${manualCount?` — <span style="color:#b00">${manualCount} منها محتاج مراجعة يدوية</span>`:''}
       </div>
-      ${packSummary?`<ul style="margin:6px 0 12px 18px">${packSummary}</ul>`:''}
+      <div class="small" style="color:#1c6b45;margin-bottom:6px">📦 <b>عدد العبوات المطلوب شراؤه (إجمالي صحيح، بعد تجميع كل الأسطر بنفس حجم العبوة):</b></div>
+      ${packSummary?`<ul style="margin:6px 0 12px 18px">${packSummary}</ul>`:'<div class="small" style="color:#b00">—</div>'}
+      <div class="small" style="color:#888;margin-bottom:8px">ملحوظة: الجدول تحت بيعرض كل سطر علاج على حدة (بالكمية فقط)، وعدد العبوات المطلوب هو الإجمالي في الملخّص فوق — مش جمع كل سطر لوحده.</div>
       <div style="overflow-x:auto">
       <table class="tbl" style="width:100%;font-size:13px">
-        <thead><tr><th>التاريخ</th><th>العميل</th><th>الجرعة (كما كُتبت)</th><th>العبوة</th><th>نمط الجرعة</th><th>الكمية المحسوبة</th><th>عدد العبوات</th></tr></thead>
+        <thead><tr><th>التاريخ</th><th>العميل</th><th>الجرعة (كما كُتبت)</th><th>العبوة</th><th>نمط الجرعة</th><th>الكمية المحسوبة</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -4717,22 +4864,25 @@ async function exportConsumptionReportPDF(){
       line(`${e.date} — ${e.clientName}`, {size:15, bold:true, gap:2});
       line(`الجرعة: ${e.doseRaw}${e.packRaw?' — العبوة: '+e.packRaw:''}`, {size:13, gap:2, color:"#555"});
       if(c.ok){
-        line(`✅ ${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}${c.dose.perLiter?' (تركيز/لتر — '+(c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):'')+'ماء '+(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)+' لتر/يوم)':''} — الكمية: ${baseAmountLabel(c.totalBase, c.dose.family)} — العبوات: ${c.packagesNeeded}`, {size:13, gap:8, color:"#1c6b45"});
-        const g=packGroups[e.packRaw]||(packGroups[e.packRaw]={base:0, family:c.dose.family});
-        g.base+=c.totalBase;
+        line(`✅ ${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}${c.dose.perLiter?' (تركيز/لتر — '+(c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):'')+'ماء '+(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)+' لتر/يوم)':''} — الكمية: ${baseAmountLabel(c.totalBase, c.dose.family)}`, {size:13, gap:8, color:"#1c6b45"});
+        const gk=packGroupKeyInfo(e.packRaw);
+        const g=packGroups[gk.key]||(packGroups[gk.key]={base:0, family:c.dose.family, labels:new Set(), count:0, pack:gk.pack});
+        g.base+=c.totalBase; g.count++; g.labels.add(gk.label||'—');
       } else {
         manualCount++;
         line(`⚠️ محتاج مراجعة يدوية — ${c.reason}`, {size:13, gap:8, color:"#b00000"});
       }
     });
     divider();
-    line("الملخّص الإجمالي", {size:18, bold:true, gap:6});
+    line("الملخّص الإجمالي — عدد العبوات المطلوب شراؤه", {size:18, bold:true, gap:6});
     line(`عدد الزيارات: ${entries.length}${manualCount?` — منها ${manualCount} محتاج مراجعة يدوية`:''}`, {size:14, gap:6, color:"#555"});
-    Object.keys(packGroups).forEach(pk=>{
-      const g=packGroups[pk];
-      const pack=parsePackForConsumption(pk);
+    Object.keys(packGroups).forEach(key=>{
+      const g=packGroups[key];
+      const pack=g.pack;
       const need=pack.ok?Math.ceil(g.base/pack.base):null;
-      line(`عبوة "${pk||'غير محدَّدة'}": إجمالي ${baseAmountLabel(g.base, g.family)}${need!=null?' — يحتاج '+need+' عبوة':''}`, {size:14, gap:4});
+      const labelText=[...g.labels].join(" / ");
+      const mergedNote=g.count>1?` (مجمّع من ${g.count} سطر)`:'';
+      line(`عبوة "${labelText||'غير محدَّدة'}"${mergedNote}: إجمالي ${baseAmountLabel(g.base, g.family)}${need!=null?' — يحتاج '+need+' عبوة':''}`, {size:14, gap:4});
     });
     finalizePage();
     const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
@@ -5134,6 +5284,8 @@ function visibleDiseasesForBirdType(bt){
     const declaredSpecies=d.id.startsWith("dk_")?"duck":(d.id.startsWith("tk_")?"turkey":(d.id.startsWith("pg_")?"pigeon":(d.id.startsWith("os_")?"ostrich":null)));
     if(declaredSpecies && declaredSpecies!==species) return false;
     if(!declaredSpecies && (species==="pigeon"||species==="ostrich")) return false;
+    // مرض "مشترك" (من غير بادئة نوع) لكن معلّم صراحة إنه محصور بنوع معين (زي IB/IBD خاصين بالدجاج) ومينفعش يظهر لنوع مستبعَد
+    if(!declaredSpecies && d.excludeSpecies && d.excludeSpecies.includes(species)) return false;
     return true;
   });
 }
@@ -5447,9 +5599,10 @@ async function saveVisitInner(clientId,date){
       const birdType=document.getElementById("nf_birdtype").value;
       const breed=document.getElementById("nf_breed").value||null;
       const birdCount0=document.getElementById("nf_birdcount0").value?parseInt(document.getElementById("nf_birdcount0").value):birdCount;
+      const region=(document.getElementById("nf_region").value||"").trim();
       const flockCode=genFlockCode(client,house,placementDate);
       const ref=await fs.collection("flocks").add({
-        clientId, houseName:house, placementDate, birdType, breed,
+        clientId, houseName:house, placementDate, birdType, breed, region,
         birdCountInitial:birdCount0||null, flockCode, status:"open",
         createdAt:new Date().toISOString()
       });
@@ -5559,7 +5712,9 @@ async function saveVisitInner(clientId,date){
 
   ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion","v_txplan","v_prevmed","v_trays","v_vaccDisease","v_vaccDaysAgo","v_feedActualKg",
    "fi_ammonia","fi_litter","fi_density","fi_ph","fi_temp","fi_humidity","fi_light","nv_house","nv_age","nv_birdcount",
-   "nf_placement","nf_birdcount0"].forEach(id=>document.getElementById(id).value="");
+   "nf_placement","nf_birdcount0","nf_region"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("nf_region").dataset.touched="";
+  document.getElementById("houseHistoryBanner").innerHTML="";
   document.getElementById("v_prevmed").dataset.autofilled=""; document.getElementById("v_vacc").dataset.autofilled="";
   document.getElementById("prevmedAutoHint").style.display="none"; document.getElementById("vaccAutoHint").style.display="none";
   document.getElementById("v_feed").value=""; document.getElementById("v_feedPattern").value=""; document.getElementById("v_feedPatternWrap").style.display="none";
