@@ -306,6 +306,9 @@
         <div class="field"><label>عدد الطيور الحالي</label><input id="nv_birdcount" type="number" min="1" oninput="checkFlockMatch();updateMortCalc();onTraysChange();refreshBreedTarget()"></div>
         <div class="field"><label>مكان الزيارة</label>
           <select id="nv_location"><option value="farm">زيارة مزرعة</option><option value="lab">زيارة معمل</option><option value="call">متابعة تليفونية</option></select></div>
+        <div class="field"><label>📍 منطقة العنبر <span class="small" style="color:#777">(للتحليل الوبائي)</span></label>
+          <input id="nf_region" list="cl_region_suggest" oninput="this.dataset.touched='1';updateRegionHint()" placeholder="مثال: العاشر من رمضان">
+          <span id="nvRegionHint" class="hint" style="display:block;margin-top:4px"></span></div>
       </div>
       <div id="pendingMedResponses"></div>
       <div id="flockMatchBanner"></div>
@@ -336,9 +339,6 @@
           <div class="field"><label>عدد الطيور الابتدائي</label><input id="nf_birdcount0" type="number" min="1"></div>
           <div class="field"><label>السلالة</label>
             <select id="nf_breed" onchange="refreshBreedTarget()"></select>
-          </div>
-          <div class="field"><label>منطقة هذا العنبر <span class="small" style="color:#777">(لو مختلفة عن منطقة العميل)</span></label>
-            <input id="nf_region" list="cl_region_suggest" oninput="this.dataset.touched='1'" placeholder="تُملأ تلقائيًا من منطقة العميل، وتقدر تعدّلها">
           </div>
         </div>
       </div>
@@ -4252,6 +4252,19 @@ function pickExistingFlock(flockId){
   checkFlockMatch();
 }
 
+// يملأ حقل المنطقة تلقائيًا: منطقة العنبر لو مسجّلة، وإلا منطقة العميل — من غير ما يمسح اللي المستخدم كتبه يدويًا
+function syncVisitRegion(flock, client){
+  const el=document.getElementById("nf_region"); if(!el) return;
+  const key=flock?("f:"+flock.id):("n:"+(client?client.id:""));
+  if(el.dataset.forKey!==key){ el.dataset.forKey=key; el.dataset.touched=""; }
+  if(!el.dataset.touched){ el.value=(flock&&flock.region)||(client&&client.region)||""; }
+  updateRegionHint();
+}
+function updateRegionHint(){
+  const el=document.getElementById("nf_region"), h=document.getElementById("nvRegionHint");
+  if(!el||!h) return;
+  h.innerHTML=(el.value||"").trim()?"":'<span style="color:#8A241D">⚠ المنطقة فاضية — الزيارة دي مش هتدخل في التحليل الوبائي</span>';
+}
 function checkFlockMatch(){
   renderClientOpenFlocks(); // نحدّث "عنابر اتزار النهاردة" لو التاريخ اتغيّر
   const clientId=document.getElementById("nv_client").value;
@@ -4277,6 +4290,7 @@ function checkFlockMatch(){
     }
   }
 
+  { const _c=STATE.clients.find(c=>c.id===clientId); if(!clientId){ const _e=document.getElementById("nf_region"); if(_e&&!_e.dataset.touched){_e.value="";} updateRegionHint(); } else if(!date){ syncVisitRegion(null,_c); } }
   if(!clientId||!date){ banner.innerHTML=""; newFields.style.display="none"; updateProdVisibility(); refreshBreedTarget(); applyTreatmentHistoryDefaults(); document.getElementById("houseHistoryBanner").innerHTML=""; return; }
   renderHouseHistoryBanner();
 
@@ -4291,6 +4305,7 @@ function checkFlockMatch(){
       banner.innerHTML=`<div class="banner match">✅ الدورة المختارة: <b>${pinned.flockCode}</b>
         (تحميل ${pinned.placementDate} — اليوم ${dayOfCycle} من الدورة). العمر وعدد الطيور اتملوا تلقائيًا — راجعهم.</div>`;
       window.__matchedFlockId=pinned.id;
+      syncVisitRegion(pinned, STATE.clients.find(c=>c.id===clientId));
       renderPendingMedResponses(pinned.id);
       updateProdVisibility();
       refreshBreedTarget();
@@ -4310,6 +4325,7 @@ function checkFlockMatch(){
       (تحميل ${match.placementDate} — اليوم ${dayOfCycle} من الدورة).
       ${warnings.length?'<br><span style="color:#8A241D">⚠ '+warnings.join(' · ')+'</span>':''}</div>`;
     window.__matchedFlockId=match.id;
+    syncVisitRegion(match, STATE.clients.find(c=>c.id===clientId));
     renderPendingMedResponses(match.id);
     updateProdVisibility();
   }else{
@@ -4318,8 +4334,7 @@ function checkFlockMatch(){
     newFields.style.display="block";
     const client=STATE.clients.find(c=>c.id===clientId);
     if(client && !document.getElementById("nf_birdtype").dataset.touched){ document.getElementById("nf_birdtype").value=client.birdType; populateBreedSelect(); updateProdVisibility(); }
-    const nfRegionEl=document.getElementById("nf_region");
-    if(client && nfRegionEl && !nfRegionEl.dataset.touched){ nfRegionEl.value=client.region||""; }
+    syncVisitRegion(null, client);
     if(!document.getElementById("nf_placement").value && age!=null){
       const implied=new Date(new Date(date).getTime()-(age-1)*864e5).toISOString().slice(0,10);
       document.getElementById("nf_placement").value=implied;
@@ -5635,6 +5650,14 @@ async function saveVisitInner(clientId,date){
     }
   }
 
+  { // لو العنبر موجود والمنطقة اتكتبت/اتعدّلت في الزيارة، نحدّثها على العنبر
+    const regionVal=(document.getElementById("nf_region").value||"").trim();
+    const fl=STATE.flocks.find(f=>f.id===flockId);
+    if(fl && regionVal && (fl.region||"")!==regionVal){
+      await fs.collection("flocks").doc(flockId).update({region:regionVal});
+    }
+  }
+
   const dxRows=dxScoreAll();
   const dxFired=dxEvalComposites(dxRows);
   const diagnosis={
@@ -5738,7 +5761,7 @@ async function saveVisitInner(clientId,date){
   ["v_complaint","v_mortd","v_mortc","v_prod","v_vacc","v_opinion","v_txplan","v_prevmed","v_trays","v_vaccDisease","v_vaccDaysAgo","v_feedActualKg",
    "fi_ammonia","fi_litter","fi_density","fi_ph","fi_temp","fi_humidity","fi_light","nv_house","nv_age","nv_birdcount",
    "nf_placement","nf_birdcount0","nf_region"].forEach(id=>document.getElementById(id).value="");
-  document.getElementById("nf_region").dataset.touched="";
+  document.getElementById("nf_region").dataset.touched=""; document.getElementById("nf_region").dataset.forKey=""; updateRegionHint();
   document.getElementById("houseHistoryBanner").innerHTML="";
   document.getElementById("v_prevmed").dataset.autofilled=""; document.getElementById("v_vacc").dataset.autofilled="";
   document.getElementById("prevmedAutoHint").style.display="none"; document.getElementById("vaccAutoHint").style.display="none";
@@ -5839,6 +5862,7 @@ function editVisit(id){
   document.getElementById("fi_biosec").value=fi.biosecurity||"";
   document.getElementById("flockMatchBanner").innerHTML='<div class="banner match">✏️ هيتم تحديث نفس الدورة والزيارة الحالية (مفيش دورة جديدة هتتعمل).</div>';
   document.getElementById("newFlockFields").style.display="none";
+  syncVisitRegion(STATE.flocks.find(f=>f.id===v.flockId)||null, STATE.clients.find(c=>c.id===v.clientId));
 
   dxReset();
   const dx=v.diagnosis||{};
