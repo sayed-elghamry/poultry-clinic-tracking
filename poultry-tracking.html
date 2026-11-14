@@ -712,7 +712,11 @@
         <div class="field"><label>المنطقة</label>
           <select id="epi_region" onchange="renderEpiAnalysis()"><option value="">— مقارنة كل المناطق —</option></select></div>
       </div>
-      <div style="margin:8px 0"><button class="btn sm" type="button" onclick="epiExportXlsx()">📥 تصدير Excel</button></div>
+      <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" type="button" onclick="epiExportXlsx()">📥 تصدير Excel</button>
+        <button class="btn sm" type="button" onclick="toggleEpiFill()">🧰 تعبئة مناطق الدورات الناقصة</button>
+      </div>
+      <div id="epiFill" style="display:none"></div>
       <div id="epiResult" style="margin-top:8px"></div>
     </div>
   </div>
@@ -5885,6 +5889,56 @@ function epiExportXlsx(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(matrix),"مصفوفة المرض×المنطقة");
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(detail),"التفاصيل");
   XLSX.writeFile(wb,"epidemiology_by_region_"+new Date().toISOString().slice(0,10)+".xlsx");
+}
+
+/* ---------------------- تعبئة المناطق الناقصة دفعة واحدة ---------------------- */
+function toggleEpiFill(){
+  const el=document.getElementById("epiFill");
+  if(el.style.display==="none"){ renderEpiFill(); el.style.display="block"; } else el.style.display="none";
+}
+function renderEpiFill(){
+  const el=document.getElementById("epiFill"); if(!el) return;
+  const byClient=new Map();
+  STATE.flocks.forEach(f=>{
+    if(epiFlockRegion(f)) return; // لها منطقة فعلية (من العنبر أو العميل)
+    if(!byClient.has(f.clientId)) byClient.set(f.clientId,[]);
+    byClient.get(f.clientId).push(f);
+  });
+  if(!byClient.size){ el.innerHTML='<div class="banner match">✅ كل الدورات ليها منطقة.</div>'; return; }
+  const clients=[...byClient.keys()].map(id=>STATE.clients.find(c=>c.id===id)).filter(Boolean).sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+  let html=`<div class="card" style="background:#FBFAF5"><h3 style="margin-top:0">🧰 تعبئة المناطق (${[...byClient.values()].reduce((n,a)=>n+a.length,0)} دورة عند ${clients.length} عميل)</h3>
+  <div class="hint" style="margin-bottom:8px">اكتب <b>منطقة العميل</b> وتتطبق على كل دوراته الناقصة. ولو عنابره في مناطق مختلفة، اكتب منطقة كل عنبر لوحده (بتتغلّب على منطقة العميل). المحفوظ بس هو اللي بتكتبه.</div>
+  <datalist id="epiFillSuggest">${[...new Set(STATE.clients.map(c=>(c.region||"").trim()).concat(STATE.flocks.map(f=>(f.region||"").trim())).filter(Boolean))].map(r=>`<option value="${epiEsc(r)}">`).join("")}</datalist>`;
+  clients.forEach(c=>{
+    const fl=byClient.get(c.id).sort((a,b)=>(b.placementDate||"").localeCompare(a.placementDate||""));
+    html+=`<div style="border-top:1px solid var(--line);padding:8px 0">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${epiEsc(c.name)}</b>
+        <input class="epi_fill_client" data-id="${c.id}" list="epiFillSuggest" placeholder="منطقة العميل (لكل العنابر)" style="max-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></div>
+      <div style="margin-top:6px;font-size:.82rem">${fl.map(f=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0">
+        <span style="min-width:230px">${epiEsc(f.houseName||"—")} · ${epiEsc(BIRD_LABEL[f.birdType]||f.birdType)} · ${epiEsc(f.placementDate||"")} ${f.status==="closed"?"(مقفولة)":""}</span>
+        <input class="epi_fill_flock" data-id="${f.id}" list="epiFillSuggest" placeholder="منطقة هذا العنبر (اختياري)" style="max-width:220px;padding:5px 8px;border:1px solid var(--line);border-radius:8px"></div>`).join("")}</div></div>`;
+  });
+  html+=`<div style="margin-top:10px"><button class="btn pri" type="button" onclick="saveEpiFill()">💾 حفظ المناطق</button> <span id="epiFillMsg" class="hint"></span></div></div>`;
+  el.innerHTML=html;
+}
+async function saveEpiFill(){
+  const msg=document.getElementById("epiFillMsg");
+  const ops=[];
+  document.querySelectorAll(".epi_fill_client").forEach(i=>{ const v=i.value.trim(); if(v) ops.push({col:"clients",id:i.dataset.id,region:v}); });
+  document.querySelectorAll(".epi_fill_flock").forEach(i=>{ const v=i.value.trim(); if(v) ops.push({col:"flocks",id:i.dataset.id,region:v}); });
+  if(!ops.length){ msg.textContent="مفيش حاجة مكتوبة للحفظ."; return; }
+  msg.textContent="⏳ جارِ الحفظ...";
+  try{
+    for(let i=0;i<ops.length;i+=400){
+      const batch=fs.batch();
+      ops.slice(i,i+400).forEach(o=>batch.update(fs.collection(o.col).doc(o.id),{region:o.region}));
+      await batch.commit();
+    }
+    msg.textContent="✅ اتحفظ "+ops.length+" منطقة.";
+    setTimeout(()=>{ renderEpiFill(); renderEpiAnalysis(); },600);
+  }catch(e){
+    msg.textContent="⚠ ماتحفظش: "+(e.message||e)+" — جرّب تاني.";
+  }
 }
 function onEpiPeriodChange(){
   const custom=document.getElementById("epi_period").value==="custom";
