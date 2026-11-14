@@ -201,6 +201,7 @@
   <button class="tab" data-tab="consumption" onclick="showTab('consumption')">📦 استهلاك الأصناف</button>
   <button class="tab" data-tab="feedmix" onclick="showTab('feedmix')">🌾 تكوين العلف</button>
   <button class="tab" data-tab="serologyanalysis" onclick="showTab('serologyanalysis')">🧪 السيرولوجيا</button>
+  <button class="tab" data-tab="epidemiology" onclick="showTab('epidemiology')">🗺 التحليل الوبائي</button>
 </div>
 
 <div class="wrap">
@@ -684,6 +685,35 @@
           <select id="sa_flock" onchange="renderSerologyAnalysis()"><option value="">— اختر عنبر —</option></select></div>
       </div>
       <div id="serologyAnalysisResult" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="tab-epidemiology">
+    <div class="card">
+      <h2>🗺 التحليل الوبائي بالمناطق</h2>
+      <div class="small" style="color:#777;margin-bottom:8px">أكتر الأمراض تكرارًا في كل منطقة (من التشخيصات المؤكدة)، مع العمر الأشيع والموسم وتلميحات وقاية — لتخطيط برنامج التحصين والوقاية.</div>
+      <div class="grid3">
+        <div class="field"><label>الفترة</label>
+          <select id="epi_period" onchange="onEpiPeriodChange()">
+            <option value="12" selected>آخر 12 شهر</option>
+            <option value="6">آخر 6 شهور</option>
+            <option value="3">آخر 3 شهور</option>
+            <option value="all">كل البيانات</option>
+            <option value="custom">فترة مخصصة</option>
+          </select></div>
+        <span id="epi_custom" style="display:none">
+          <div class="field"><label>من</label><input id="epi_from" type="date" onchange="renderEpiAnalysis()"></div>
+          <div class="field"><label>إلى</label><input id="epi_to" type="date" onchange="renderEpiAnalysis()"></div>
+        </span>
+        <div class="field"><label>نوع الطائر</label>
+          <select id="epi_species" onchange="renderEpiAnalysis()">
+            <option value="">الكل</option><option value="chicken">دجاج</option><option value="duck">بط</option><option value="turkey">رومي</option><option value="pigeon">حمام</option><option value="ostrich">نعام</option>
+          </select></div>
+        <div class="field"><label>المنطقة</label>
+          <select id="epi_region" onchange="renderEpiAnalysis()"><option value="">— مقارنة كل المناطق —</option></select></div>
+      </div>
+      <div style="margin:8px 0"><button class="btn sm" type="button" onclick="epiExportXlsx()">📥 تصدير Excel</button></div>
+      <div id="epiResult" style="margin-top:8px"></div>
     </div>
   </div>
 
@@ -2860,7 +2890,7 @@ function startListeners(){
 function showTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
-  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail",consumption:"tab-consumption",feedmix:"tab-feedmix",serologyanalysis:"tab-serologyanalysis"};
+  const map={dashboard:"tab-dashboard",clients:"tab-clients",newvisit:"tab-newvisit",openflocks:"tab-openflocks",clientdetail:"tab-clientdetail",consumption:"tab-consumption",feedmix:"tab-feedmix",serologyanalysis:"tab-serologyanalysis",epidemiology:"tab-epidemiology"};
   document.getElementById(map[name]).classList.add("active");
   if(name==="openflocks") renderOpenFlocks();
   if(name==="dashboard") renderDashboard();
@@ -2869,6 +2899,7 @@ function showTab(name){
     addFeedRow("كسب فول الصويا 44%",30);
   }
   if(name==="serologyanalysis") populateSerologyClientSelect();
+  if(name==="epidemiology") renderEpiAnalysis();
 }
 /* ---------------------- تذكير التقويم لميعاد المتابعة (.ics قابل للإضافة لأي تقويم على الموبايل/الكمبيوتر) ---------------------- */
 function downloadVisitReminderICS(dateStr, title, note){
@@ -5589,6 +5620,277 @@ function handleSeroImage(file){ return handleSeroFiles(file?[file]:[]); }
   zone.addEventListener("dragover",e=>{ if(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).includes("Files")) e.preventDefault(); });
   zone.addEventListener("drop",e=>{ if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){ e.preventDefault(); handleSeroFiles(e.dataTransfer.files); } });
 })();
+
+/* ---------------------- التحليل الوبائي بالمناطق ---------------------- */
+// تلميحات وقاية إرشادية لكل مرض (للدعم فقط — القرار النهائي للطبيب). النوع: vax=له لقاح، mix=مركّب، mgmt=إدارة/أمن حيوي
+const EPI_PREVENT={
+  nd:["vax","راجع برنامج النيوكاسل (حي/ميت) وتوقيت الجرعات، وتابع HI لتجانس المناعة"],
+  ib:["vax","راجع سلالات لقاح IB ومدى تطابقها مع السلالة المنتشرة وطريقة الإعطاء"],
+  ibd:["vax","حدّد توقيت لقاح الجامبورو بقياس الأجسام المضادة الأمية (ELISA) وراجع قوة اللقاح"],
+  ai:["vax","راجع برنامج الإنفلونزا (H5) وتطابق سلالة اللقاح مع المنتشرة"],
+  lpai:["vax","راجع برنامج الإنفلونزا (H9) وتطابق سلالة اللقاح مع المنتشرة"],
+  ilt:["vax","راجع التحصين ضد ILT وجودة إعطاء اللقاح بالمنطقة"],
+  mar:["vax","راجع تحصين ماريك بالمفرخة وجودة الحقن"],
+  pox:["vax","راجع تحصين الجدري وتوقيته ومكافحة الناموس"],
+  eds:["vax","راجع تحصين EDS-76 قبل بداية الإنتاج"],
+  reo:["vax","راجع تحصين الريوفيروس (أمهات/تسمين)"],
+  cav:["vax","راجع مناعة الأمهات ضد CAV"],
+  tvp:["mix","راجع تحصين الجامبورو وبرنامج الأدينو وأمن حيوي المفرخة"],
+  mpv:["vax","راجع تحصين الميتانيمو/TRT وتوقيته"],
+  coc:["mix","برنامج الكوكسيديا: لقاح أو وقاية دوائية + إدارة الفرشة والرطوبة"],
+  tk_trt:["vax","راجع تحصين TRT/aMPV بالرومي"],
+  tk_he:["vax","راجع تحصين Hemorrhagic Enteritis بالرومي"],
+  pg_pmv1:["vax","راجع تحصين PMV-1 بالحمام"],
+  pg_pox:["vax","راجع تحصين جدري الحمام"],
+  os_nd:["vax","راجع تحصين النيوكاسل بالنعام"],
+  col:["mix","وقاية مركبة: أمن حيوي، تهوية، جودة المياه، ومعالجة الأمراض الفيروسية/الميكوبلازما الممهّدة"],
+  myc:["mix","وقاية مركبة: مصدر الكتاكيت الخالية من الميكوبلازما، التهوية، ومراجعة اللقاحات التنفسية"],
+  ms:["mix","وقاية مركبة: مصدر الكتاكيت والتهوية ومراجعة برنامج الميكوبلازما"],
+  crd:["mix","وقاية مركبة: ضبط التهوية والأمونيا وبرنامج اللقاحات التنفسية"]
+};
+const EPI_DEFAULT_PREVENT=["mgmt","وقاية غير لقاحية: الأمن الحيوي، التهوية، جودة المياه والعلف والفرشة"];
+const EPI_SPECIES_LABEL={chicken:"دجاج",duck:"بط",turkey:"رومي",pigeon:"حمام",ostrich:"نعام"};
+const EPI_MONTHS=["ينا","فبر","مار","أبر","ماي","يون","يول","أغس","سبت","أكت","نوف","ديس"];
+
+function epiEsc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function epiNormRegion(r){
+  return (r||"").replace(/[ً-ْـ]/g,"").replace(/[أإآ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه").replace(/\s+/g," ").trim().toLowerCase();
+}
+function epiSpecies(bt){
+  bt=bt||"";
+  if(bt.startsWith("duck")) return "duck";
+  if(bt.startsWith("turkey")) return "turkey";
+  if(bt==="pigeon") return "pigeon";
+  if(bt.startsWith("ostrich")) return "ostrich";
+  return "chicken";
+}
+function epiQuantile(arr,p){
+  if(!arr.length) return null;
+  const a=arr.slice().sort((x,y)=>x-y), i=(a.length-1)*p, lo=Math.floor(i), hi=Math.ceil(i);
+  return a[lo]+(a[hi]-a[lo])*(i-lo);
+}
+function epiFlockRegion(f){
+  const own=(f.region||"").trim(); if(own) return own;
+  const c=STATE.clients.find(x=>x.id===f.clientId);
+  return ((c&&c.region)||"").trim();
+}
+function epiDateRange(){
+  const p=document.getElementById("epi_period").value;
+  const today=new Date().toISOString().slice(0,10);
+  if(p==="all") return {from:null,to:null};
+  if(p==="custom") return {from:document.getElementById("epi_from").value||null,to:document.getElementById("epi_to").value||null};
+  const d=new Date(); d.setMonth(d.getMonth()-parseInt(p,10));
+  return {from:d.toISOString().slice(0,10),to:today};
+}
+function epiVisitDx(v){
+  if(v.confirmedDiagnoses&&v.confirmedDiagnoses.length) return v.confirmedDiagnoses;
+  if(v.confirmedDiagnosisId){ const d=DISEASES.find(x=>x.id===v.confirmedDiagnosisId); return [{id:v.confirmedDiagnosisId,label:d?d.ar:v.confirmedDiagnosisId}]; }
+  return [];
+}
+// يجمع: منطقة ← دورة (Flock) ← تشخيصات مؤكدة. الوحدة = "دورة فيها المرض" (مش عدد الزيارات)
+function epiCollect(){
+  const {from,to}=epiDateRange();
+  const speciesSel=document.getElementById("epi_species").value;
+  const flockMap=new Map(STATE.flocks.map(f=>[f.id,f]));
+  const regions=new Map();
+  const missing=new Map(); // flockId -> flock (بدون منطقة)
+  let visitsUsed=0;
+  STATE.visits.forEach(v=>{
+    if(!v.date) return;
+    if(from && v.date<from) return;
+    if(to && v.date>to) return;
+    const f=flockMap.get(v.flockId); if(!f) return;
+    if(speciesSel && epiSpecies(f.birdType)!==speciesSel) return;
+    visitsUsed++;
+    const label=epiFlockRegion(f);
+    const key=label?epiNormRegion(label):"__none__";
+    if(key==="__none__") missing.set(f.id,f);
+    let reg=regions.get(key);
+    if(!reg){ reg={key,label:label||"بدون منطقة",labels:{},flocks:new Map()}; regions.set(key,reg); }
+    if(label) reg.labels[label]=(reg.labels[label]||0)+1;
+    let fr=reg.flocks.get(f.id);
+    if(!fr){ fr={flock:f,dx:new Map()}; reg.flocks.set(f.id,fr); }
+    epiVisitDx(v).forEach(dx=>{
+      if(!dx||!dx.id||dx.id==="followup") return;
+      const d=DISEASES.find(x=>x.id===dx.id);
+      let e=fr.dx.get(dx.id);
+      if(!e){ e={id:dx.id,label:d?d.ar:(dx.label||dx.id),age:null,date:null,visits:0}; fr.dx.set(dx.id,e); }
+      e.visits++;
+      if(v.ageDays!=null && !isNaN(v.ageDays) && (e.age==null||v.ageDays<e.age)) e.age=v.ageDays;
+      if(e.date==null||v.date<e.date) e.date=v.date;
+    });
+  });
+  // اسم العرض = أكثر صيغة مكتوبة تكرارًا
+  regions.forEach(reg=>{
+    const best=Object.entries(reg.labels).sort((a,b)=>b[1]-a[1])[0];
+    if(best) reg.label=best[0];
+  });
+  return {regions,missing,visitsUsed};
+}
+function epiRegionStats(reg){
+  const nFlocks=reg.flocks.size;
+  const byDx=new Map();
+  reg.flocks.forEach(fr=>{
+    fr.dx.forEach(e=>{
+      let s=byDx.get(e.id);
+      if(!s){ s={id:e.id,label:e.label,flocks:0,visits:0,ages:[],months:new Array(12).fill(0)}; byDx.set(e.id,s); }
+      s.flocks++; s.visits+=e.visits;
+      if(e.age!=null) s.ages.push(e.age);
+      if(e.date){ const m=parseInt(e.date.slice(5,7),10)-1; if(m>=0&&m<12) s.months[m]++; }
+    });
+  });
+  const list=[...byDx.values()].map(s=>({
+    ...s, pct:nFlocks?s.flocks/nFlocks:0,
+    median:epiQuantile(s.ages,0.5), p25:epiQuantile(s.ages,0.25), p75:epiQuantile(s.ages,0.75)
+  })).sort((a,b)=>b.flocks-a.flocks||b.visits-a.visits);
+  const withDx=[...reg.flocks.values()].filter(fr=>fr.dx.size).length;
+  return {nFlocks,withDx,list};
+}
+function epiFlag(s){
+  if(s.flocks>=3 && s.pct>=0.2) return {txt:"🔴 متكرر",color:"#c0392b"};
+  if(s.flocks>=2) return {txt:"🟠 ملحوظ",color:"#B7791F"};
+  return {txt:"⚪ حالة فردية",color:"#777"};
+}
+function populateEpiRegionSelect(regionsSorted){
+  const sel=document.getElementById("epi_region"); if(!sel) return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— مقارنة كل المناطق —</option>'+regionsSorted.map(r=>`<option value="${epiEsc(r.key)}">${epiEsc(r.label)} (${r.flocks.size} دورة)</option>`).join("");
+  if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function renderEpiAnalysis(){
+  const host=document.getElementById("epiResult"); if(!host) return;
+  const data=epiCollect();
+  const regs=[...data.regions.values()].sort((a,b)=>{
+    if(a.key==="__none__") return 1; if(b.key==="__none__") return -1;
+    return b.flocks.size-a.flocks.size;
+  });
+  window.__epi={data,regs};
+  populateEpiRegionSelect(regs);
+  const totalFlocks=regs.reduce((n,r)=>n+r.flocks.size,0);
+  if(!totalFlocks){
+    host.innerHTML='<div class="banner new">مفيش زيارات في الفترة/النوع المختار.</div>'; return;
+  }
+  const stats=new Map(regs.map(r=>[r.key,epiRegionStats(r)]));
+  const withDxTotal=[...stats.values()].reduce((n,s)=>n+s.withDx,0);
+  const realRegions=regs.filter(r=>r.key!=="__none__");
+  let html="";
+
+  // ملخّص
+  html+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <div class="chip">📍 مناطق محددة: <b>${realRegions.length}</b></div>
+    <div class="chip">🐔 دورات في التحليل: <b>${totalFlocks}</b></div>
+    <div class="chip">🩺 دورات بتشخيص مؤكد: <b>${withDxTotal}</b></div>
+    <div class="chip">🗂 زيارات: <b>${data.visitsUsed}</b></div>
+  </div>`;
+  if(data.missing.size){
+    const names=[...new Set([...data.missing.values()].map(f=>{const c=STATE.clients.find(x=>x.id===f.clientId);return c?c.name:"—";}))];
+    html+=`<div class="banner new">⚠ <b>${data.missing.size}</b> دورة من غير منطقة (عملاء: ${names.slice(0,8).map(epiEsc).join("، ")}${names.length>8?" …":""}) — دي مش بتدخل في مقارنة المناطق. حدّد المنطقة من بيانات العميل أو تعديل العنبر.</div>`;
+  }
+  if(withDxTotal<10){
+    html+=`<div class="banner">ℹ البيانات لسه قليلة (${withDxTotal} دورة بتشخيص مؤكد) — النتايج إرشادية وهتبقى أدق مع تراكم الشهور. التحليل بيعتمد على <b>التشخيص المؤكد</b> بس.</div>`;
+  }
+
+  const selKey=document.getElementById("epi_region").value;
+  if(selKey && data.regions.has(selKey)){
+    html+=renderEpiRegionDetail(data.regions.get(selKey),stats.get(selKey));
+  }else{
+    // جدول مقارنة المناطق
+    html+=`<h3 style="margin:14px 0 6px">📍 مقارنة المناطق</h3>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85rem">
+      <tr style="background:#EDF1EF"><th style="padding:6px;text-align:right">المنطقة</th><th>دورات</th><th>بتشخيص مؤكد</th><th style="text-align:right">أكتر 3 أمراض تكرارًا (عدد الدورات · %)</th></tr>
+      ${regs.map(r=>{
+        const s=stats.get(r.key);
+        const top=s.list.slice(0,3).map(x=>`${epiEsc(x.label)} <b>${x.flocks}</b> · ${(x.pct*100).toFixed(0)}%`).join("<br>")||'<span style="color:#999">—</span>';
+        return `<tr style="border-top:1px solid var(--line);cursor:pointer" onclick="document.getElementById('epi_region').value='${epiEsc(r.key)}';renderEpiAnalysis()">
+          <td style="padding:6px"><b>${epiEsc(r.label)}</b></td><td style="text-align:center">${s.nFlocks}</td><td style="text-align:center">${s.withDx}</td><td style="padding:6px">${top}</td></tr>`;
+      }).join("")}
+    </table></div><div class="hint">اضغط على أي منطقة لعرض تفاصيلها.</div>`;
+
+    // الخريطة الحرارية (منطقة × مرض)
+    const dxTotals=new Map();
+    regs.forEach(r=>stats.get(r.key).list.forEach(x=>{ const t=dxTotals.get(x.id)||{id:x.id,label:x.label,flocks:0}; t.flocks+=x.flocks; dxTotals.set(x.id,t); }));
+    const topDx=[...dxTotals.values()].sort((a,b)=>b.flocks-a.flocks).slice(0,10);
+    const hmRegs=regs.slice(0,14);
+    if(topDx.length && hmRegs.length){
+      html+=`<h3 style="margin:18px 0 6px">🗺 الخريطة الحرارية — المرض × المنطقة</h3>
+      <div class="hint" style="margin-bottom:6px">كل خلية = عدد الدورات المصابة (ونسبتها من دورات المنطقة). كل ما اللون أغمق، المرض أكتر تكرارًا في المنطقة.</div>
+      <div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:.78rem;min-width:100%">
+        <tr><th style="padding:4px;text-align:right">المنطقة</th>${topDx.map(d=>`<th style="padding:4px;max-width:90px;font-weight:600">${epiEsc(d.label)}</th>`).join("")}</tr>
+        ${hmRegs.map(r=>{
+          const s=stats.get(r.key); const m=new Map(s.list.map(x=>[x.id,x]));
+          return `<tr><td style="padding:4px;white-space:nowrap"><b>${epiEsc(r.label)}</b> <span style="color:#777">(${s.nFlocks})</span></td>${topDx.map(d=>{
+            const x=m.get(d.id);
+            if(!x) return `<td style="padding:4px;text-align:center;border:1px solid #fff;background:#f6f7f6;color:#bbb">·</td>`;
+            const a=Math.min(1,0.15+x.pct*0.85);
+            return `<td style="padding:4px;text-align:center;border:1px solid #fff;background:rgba(194,65,12,${a.toFixed(2)});color:${a>0.55?"#fff":"#222"}">${x.flocks}<br><span style="font-size:.68rem">${(x.pct*100).toFixed(0)}%</span></td>`;
+          }).join("")}</tr>`;
+        }).join("")}
+      </table></div>`;
+    }
+  }
+  html+=`<div class="hint" style="margin-top:12px">⚠ التحليل إرشادي ومبني على التشخيصات المؤكدة المسجّلة فقط، والوحدة = دورة (مش زيارة) عشان المرض ما يتعدش أكتر من مرة في نفس الدورة. القرار النهائي لبرنامج التحصين للطبيب.</div>`;
+  host.innerHTML=html;
+}
+function renderEpiRegionDetail(reg,s){
+  let html=`<div style="display:flex;align-items:center;gap:8px;margin:14px 0 6px;flex-wrap:wrap">
+    <h3 style="margin:0">📍 ${epiEsc(reg.label)}</h3>
+    <button class="btn sm" type="button" onclick="document.getElementById('epi_region').value='';renderEpiAnalysis()">↩ رجوع للمقارنة</button>
+  </div>
+  <div class="small" style="color:#555;margin-bottom:6px">${s.nFlocks} دورة · ${s.withDx} منها بتشخيص مؤكد</div>`;
+  if(!s.list.length){ return html+'<div class="banner">مفيش تشخيصات مؤكدة في المنطقة دي خلال الفترة.</div>'; }
+  html+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.84rem">
+    <tr style="background:#EDF1EF"><th style="padding:6px;text-align:right">المرض</th><th>دورات</th><th style="min-width:110px">النسبة</th><th>العمر الأشيع (يوم)</th><th>توزيع الشهور</th><th>الحالة</th></tr>`;
+  s.list.forEach(x=>{
+    const fl=epiFlag(x);
+    const age=x.median!=null?`${Math.round(x.median)} <span style="color:#777">(${Math.round(x.p25)}–${Math.round(x.p75)})</span>`:'<span style="color:#999">—</span>';
+    const maxM=Math.max(1,...x.months);
+    const strip=x.months.map((n,i)=>`<span title="${EPI_MONTHS[i]}: ${n}" style="display:inline-block;width:7px;height:${n?4+Math.round(n/maxM*16):2}px;background:${n?"#C2410C":"#ddd"};margin-left:1px;vertical-align:bottom"></span>`).join("");
+    const pv=EPI_PREVENT[x.id]||EPI_DEFAULT_PREVENT;
+    const pvIcon=pv[0]==="vax"?"🛡":(pv[0]==="mix"?"🧩":"🧹");
+    html+=`<tr style="border-top:1px solid var(--line)">
+      <td style="padding:6px"><b>${epiEsc(x.label)}</b></td>
+      <td style="text-align:center">${x.flocks}</td>
+      <td><div style="background:#eee;border-radius:6px;height:10px;width:100%"><div style="background:#C2410C;height:10px;border-radius:6px;width:${Math.min(100,x.pct*100).toFixed(0)}%"></div></div><span style="font-size:.74rem">${(x.pct*100).toFixed(0)}%</span></td>
+      <td style="text-align:center">${age}</td>
+      <td style="white-space:nowrap">${strip}</td>
+      <td style="color:${fl.color};white-space:nowrap">${fl.txt}</td></tr>
+    <tr><td colspan="6" style="padding:2px 6px 8px;font-size:.76rem;color:#555">${pvIcon} ${epiEsc(pv[1])}</td></tr>`;
+  });
+  html+=`</table></div>`;
+  const recurring=s.list.filter(x=>x.flocks>=3&&x.pct>=0.2);
+  if(recurring.length){
+    html+=`<div class="banner match" style="margin-top:10px"><b>خلاصة للتخطيط:</b> الأمراض المتكررة في ${epiEsc(reg.label)}: ${recurring.map(x=>`${epiEsc(x.label)}${x.median!=null?` (غالبًا حوالي يوم ${Math.round(x.median)})`:""}`).join("، ")}. راجع الوقاية قبل العمر الأشيع للظهور.</div>`;
+  }
+  return html;
+}
+function epiExportXlsx(){
+  if(!window.__epi||!window.__epi.regs.length){ alert("شغّل التحليل الأول."); return; }
+  const {regs}=window.__epi;
+  const detail=[], matrixMap=new Map(), dxNames=new Map();
+  regs.forEach(r=>{
+    const s=epiRegionStats(r);
+    s.list.forEach(x=>{
+      dxNames.set(x.id,x.label);
+      detail.push({"المنطقة":r.label,"عدد دورات المنطقة":s.nFlocks,"المرض":x.label,"عدد الدورات المصابة":x.flocks,"النسبة %":+(x.pct*100).toFixed(1),"عدد الزيارات":x.visits,"العمر الأشيع (وسيط)":x.median!=null?Math.round(x.median):"","العمر ربع أدنى":x.p25!=null?Math.round(x.p25):"","العمر ربع أعلى":x.p75!=null?Math.round(x.p75):"","الحالة":epiFlag(x).txt.replace(/^\S+\s/,"")});
+    });
+    matrixMap.set(r.key,{r,s});
+  });
+  const matrix=regs.map(r=>{
+    const {s}=matrixMap.get(r.key); const row={"المنطقة":r.label,"عدد الدورات":s.nFlocks};
+    const m=new Map(s.list.map(x=>[x.id,x]));
+    dxNames.forEach((name,id)=>{ row[name]=m.get(id)?m.get(id).flocks:0; });
+    return row;
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(matrix),"مصفوفة المرض×المنطقة");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(detail),"التفاصيل");
+  XLSX.writeFile(wb,"epidemiology_by_region_"+new Date().toISOString().slice(0,10)+".xlsx");
+}
+function onEpiPeriodChange(){
+  const custom=document.getElementById("epi_period").value==="custom";
+  document.getElementById("epi_custom").style.display=custom?"contents":"none";
+  renderEpiAnalysis();
+}
 
 /* ---------------------- اختيار رقم هاتف العميل من جهات الاتصال بالموبايل ---------------------- */
 async function pickClientPhone(){
