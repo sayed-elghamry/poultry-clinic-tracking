@@ -346,7 +346,8 @@
       <hr class="divider">
       <h3>بيانات الزيارة / الحالة</h3>
       <div class="grid3">
-        <div class="field"><label>🗣️ الشكوى الرئيسية</label><input id="v_complaint"></div>
+        <div class="field" style="grid-column:1/-1"><label>🗣️ الشكوى الرئيسية <span class="small" style="color:#777">(اكتب كل شكوى/ملاحظة في سطر — الحقل بيكبر لوحده)</span></label>
+          <textarea id="v_complaint" rows="4" style="min-height:110px;resize:vertical;line-height:1.7" placeholder="مثال:&#10;- نفوق مرتفع من يوم 12&#10;- أعراض تنفسية وعياط&#10;- هبوط في استهلاك العلف" oninput="autoGrowComplaint(this)"></textarea></div>
         <div class="field"><label>عدد العينات الحية (فحص إكلينيكي)</label><input id="v_sample_alive" type="number" min="0" inputmode="numeric" oninput="updateSampleTotal()"></div>
         <div class="field"><label>عدد العينات النافقة (تشريح)</label><input id="v_sample_dead" type="number" min="0" inputmode="numeric" oninput="updateSampleTotal()"></div>
         <div class="field"><label>إجمالي العينة</label><input id="v_sample_total" disabled></div>
@@ -876,6 +877,7 @@ function updateWaterEstimate(){
   if(isNaN(feedKg) || feedKg==null || feedKg<=0){ out.value=""; return; }
   out.value=(feedKg*factor).toFixed(0)+" لتر تقريبًا";
 }
+function autoGrowComplaint(el){ if(!el) return; el.style.height="auto"; el.style.height=Math.max(110,el.scrollHeight+2)+"px"; }
 function refreshBreedTarget(){
   const host=document.getElementById("breedTargetHint");
   if(!host) return;
@@ -5830,7 +5832,7 @@ function editVisit(id){
   document.getElementById("nv_date").value=v.date||"";
   document.getElementById("nv_age").value=v.ageDays??"";
   document.getElementById("nv_birdcount").value=v.birdCount??"";
-  document.getElementById("v_complaint").value=v.complaint||"";
+  document.getElementById("v_complaint").value=v.complaint||""; autoGrowComplaint(document.getElementById("v_complaint"));
   document.getElementById("mortRows").innerHTML=""; mortCount=0;
   (v.mortalityLog||[]).forEach(m=>addMortRow(m.date,m.dead));
   loadFieldSignals(v.fieldSignals);
