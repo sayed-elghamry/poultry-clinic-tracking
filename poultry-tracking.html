@@ -211,7 +211,10 @@
     <div class="grid3" id="dashStats"></div>
     <div class="row" style="margin:6px 0">
       <button class="btn sm" onclick="exportAllStatsExcel()">📊 تصدير إحصائي شامل (Excel) — كل الحالات</button>
+      <button class="btn sm pri" id="btnBackupJson" onclick="backupAllData('json')">💾 نسخة احتياطية كاملة (JSON)</button>
+      <button class="btn sm" id="btnBackupXlsx" onclick="backupAllData('xlsx')">🗂 نسخة احتياطية (Excel)</button>
     </div>
+    <div class="hint" id="backupStatus" style="margin:0 0 8px"></div>
     <div class="card">
       <h2>⚠ تنبيهات الدورات</h2>
       <div id="dashAlerts"></div>
@@ -2934,6 +2937,7 @@ function downloadVisitReminderICS(dateStr, title, note){
   setTimeout(()=>URL.revokeObjectURL(url), 3000);
 }
 function renderDashboard(){
+  updateBackupStatus();
   const host1=document.getElementById("dashStats"); if(!host1)return;
   const totalClients=STATE.clients.length;
   const openFlocksArr=STATE.flocks.filter(f=>f.status==="open");
@@ -3818,6 +3822,56 @@ function exportClientExcel(){
   exportVisitsToExcel(visits, c.name);
 }
 /* تصدير إحصائي شامل لكل الحالات المسجّلة في العيادة: كل الزيارات + تكرار الأمراض + فعالية الأدوية + منحنى النفوق حسب العمر */
+
+/* ---------------------- النسخ الاحتياطي لكل البيانات ---------------------- */
+const BACKUP_COLLECTIONS=["clients","flocks","visits","packCatalog"];
+function updateBackupStatus(){
+  const el=document.getElementById("backupStatus"); if(!el) return;
+  let last=null; try{ last=localStorage.getItem("lastBackupAt"); }catch(_e){}
+  if(!last){ el.innerHTML='<span style="color:#B7791F">⚠ لسه ماعملتش نسخة احتياطية من الجهاز ده. اعمل واحدة وخزّنها في Google Drive أو على الكمبيوتر.</span>'; return; }
+  const days=Math.floor((Date.now()-new Date(last).getTime())/864e5);
+  const when=new Date(last).toLocaleString("ar-EG");
+  el.innerHTML=days>=7
+    ? `<span style="color:#c0392b">⚠ آخر نسخة احتياطية من الجهاز ده من ${days} يوم (${when}) — يفضّل تحديثها.</span>`
+    : `<span style="color:#1f7a4d">✅ آخر نسخة احتياطية: ${when}</span>`;
+}
+async function backupAllData(format){
+  const btn=document.getElementById(format==="xlsx"?"btnBackupXlsx":"btnBackupJson");
+  const old=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="⏳ جارِ تجميع البيانات..."; }
+  try{
+    const data={};
+    for(const c of BACKUP_COLLECTIONS){
+      const snap=await fs.collection(c).get();
+      data[c]=snap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    const stamp=new Date().toISOString().slice(0,10);
+    const counts={}; BACKUP_COLLECTIONS.forEach(c=>counts[c]=data[c].length);
+    if(format==="xlsx"){
+      const wb=XLSX.utils.book_new();
+      const clip=v=>{ if(v==null) return ""; if(typeof v==="object") v=JSON.stringify(v); v=String(v); return v.length>32000?v.slice(0,32000)+"…":v; };
+      BACKUP_COLLECTIONS.forEach(c=>{
+        const rows=data[c].map(r=>{ const o={}; Object.keys(r).forEach(k=>o[k]=clip(r[k])); return o; });
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{}]),c);
+      });
+      XLSX.writeFile(wb,"poultry-backup-"+stamp+".xlsx");
+    }else{
+      const payload={app:"poultry-tracking",version:1,exportedAt:new Date().toISOString(),counts,data};
+      const blob=new Blob([JSON.stringify(payload)],{type:"application/json"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a"); a.href=url; a.download="poultry-backup-"+stamp+".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),4000);
+    }
+    try{ localStorage.setItem("lastBackupAt",new Date().toISOString()); }catch(_e){}
+    updateBackupStatus();
+    alert("✅ تم تصدير النسخة الاحتياطية:\n"+BACKUP_COLLECTIONS.map(c=>c+": "+counts[c]).join("\n")+"\n\nخزّنها في مكان آمن (Google Drive مثلًا).");
+  }catch(e){
+    alert("⚠ تعذّر عمل النسخة الاحتياطية: "+(e.message||e));
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=old; }
+  }
+}
 function exportAllStatsExcel(){
   if(!STATE.visits.length){alert("لا توجد زيارات مسجّلة بعد.");return;}
   const RESP_LABEL=RESP_LABEL_FULL;
