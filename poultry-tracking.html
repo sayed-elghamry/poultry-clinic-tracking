@@ -5135,14 +5135,33 @@ function parseDoseForConsumption(doseRaw, isInjectionCombo){
   // ده مختلف عن "500 جم/1000 لتر" اللي فيها رقم مياه محدد (بيتجاهل حسب الاتفاق السابق)
   const remainder=trimmedText.slice(lead.consumed);
   const perLiter=/^\s*(?:\/|لكل|في)\s*لتر(?!\s*\/?\s*\d)/.test(remainder) && !/^\s*(?:\/|لكل|في)\s*لتر\s*[\d.,]/.test(remainder);
-  let N=null, isOnceOnly=false;
+  let N=null, isOnceOnly=false, timesPerDay=null, totalDoses=null, nFromDoses=false;
   if(isInjectionCombo){
     // أي صنف متعلّم "💉 حقنة مجمّعة" بيتحسب تلقائي كجرعة واحدة، من غير ما نحتاج أي كلمة خاصة في نص الجرعة نفسه
     N=1; isOnceOnly=true;
   }else{
+    // --- أنماط الجرعات المتواصلة بالساعات / عدد الجرعات (مثال: "100 جم لمدة 6 مرات متواصل" أو "3 مرات يوميًا لمدة 3 أيام" أو "لمدة 72 ساعة") ---
+    const NUM_TOK="([\\d.,]+|ثلاث[ةه]?|تلات[ةه]?|أربع[ةه]?|اربع[ةه]?|خمس[ةه]?|ست[ةه]?|سبع[ةه]?|ثمان[يى]?[ةه]?|تمان[يى]?[ةه]?|تسع[ةه]?|عشر[ةه]?)";
+    const wordNum=t=>{ if(/^[\d.,]+$/.test(t)) return parseFloat(t.replace(",",".")); const m={"ثلاث":3,"تلات":3,"أربع":4,"اربع":4,"خمس":5,"ست":6,"سبع":7,"ثمان":8,"تمان":8,"تسع":9,"عشر":10}; const k=t.replace(/[ةهيى]$/,""); return m[t]||m[k]||null; };
+    let work=text;
+    const mPerDay=work.match(new RegExp(NUM_TOK+"\\s*(?:مرات|مره|جرعات|دفعات)\\s*(?:في|ب|كل|/)?\\s*(?:ال)?يوم"));
+    if(mPerDay){ timesPerDay=wordNum(mPerDay[1]); work=work.replace(mPerDay[0]," "); }
+    else if(/(?:مرتين|جرعتين)\s*(?:في|ب|كل)?\s*(?:ال)?يوم/.test(work)) timesPerDay=2;
+    else if(/(?:ثلاث|تلات)\s*(?:مرات|جرعات)\s*يومي/.test(work)) timesPerDay=3;
+    const mEvery=work.match(/كل\s*([\d.,]+)\s*(?:ساع[ةهات]*|س)(?![\u0621-\u064A])/);
+    if(mEvery && !timesPerDay){ const hh=parseFloat(mEvery[1].replace(",",".")); if(hh>0&&hh<=24) timesPerDay=24/hh; }
+    if(mEvery) work=work.replace(mEvery[0]," ");
+    const mTot=work.match(new RegExp("(?:لمدة|لمده|عدد|×|\\*|لـ|على|علي)?\\s*"+NUM_TOK+"\\s*(?:مرات|مره|جرعات|دفعات)(?![\\u0621-\\u064A])"));
+    if(mTot){ const t=wordNum(mTot[1]); if(t&&t>0) totalDoses=t; }
+    let hoursDur=null;
+    const mHrs=work.match(/([\d.,]+)\s*(?:ساع[ةهات]*|س)(?![\u0621-\u064A])/);
+    if(mHrs){ const hv=parseFloat(mHrs[1].replace(",",".")); if(hv>=24) hoursDur=hv; } // أقل من 24 ساعة = ساعات سقاية في اليوم مش مدة علاج
     const mN=text.match(/(?:لمدة|لمده|\*|×|لـ)\s*([\d.,]+)\s*(?:يوم|أيام|ايام)/);
     if(mN) N=parseFloat(mN[1].replace(",","."));
+    else if(hoursDur) N=Math.ceil(hoursDur/24);
     else if(/يومين/.test(text)) N=2;
+    else if(/(?:ثلاث|تلات)[ةه]?\s*(?:أيام|ايام)/.test(text)) N=3;
+    else if(totalDoses){ N=Math.ceil(totalDoses/(timesPerDay||1)); nFromDoses=true; }
     else if(/(?:مر[ةه]|جرع[ةه]|دفع[ةه]|حقن[ةه]?)\s*وا?حد[ةه]?/.test(text)){ N=1; isOnceOnly=true; }
   }
   if(N==null) return {ok:false, reason:"تعذّر تحديد عدد أيام العلاج من النص — لو دواء بيتاخد مرة واحدة بس (زي الحقن)، اكتب «مرة واحدة» في نص الجرعة أو اختَر «💉 حقنة مجمّعة» بخانة الدمج", raw, dose:lead};
@@ -5157,6 +5176,12 @@ function parseDoseForConsumption(doseRaw, isInjectionCombo){
   } else if(isIntermittent){
     effectiveDays=Math.ceil(N/2);
     pattern="intermittent";
+  } else if(!isOnceOnly && totalDoses && !(timesPerDay && /يوم|ساع/.test(text) && !/متواصل/.test(text) && mN)){
+    // عدد جرعات إجمالي محدد (مثال: 6 جرعات متواصلة على يومين) ⇐ الكمية = جرعة × العدد الكلي
+    pattern="doses"; multiplier=1; effectiveDays=totalDoses;
+  } else if(!isOnceOnly && timesPerDay && timesPerDay!==1){
+    multiplier=timesPerDay;
+    pattern=(timesPerDay===2)?"twice":"multi";
   } else if(isTwice){
     multiplier=2;
     pattern="twice";
@@ -5168,10 +5193,10 @@ function parseDoseForConsumption(doseRaw, isInjectionCombo){
     const mHours=text.match(/([\d.,]+)\s*ساع/);
     if(mHours){ hoursPerDay=parseFloat(mHours[1].replace(",",".")); hoursFraction=Math.min(hoursPerDay/24, 1); }
     // الكمية الإجمالية هتتحسب لاحقًا في computeMedicationNeed لما تبقى متاحة بيانات الماء المقدَّر للزيارة
-    return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, effectiveDays, multiplier, pattern, intervalK, family, perLiter:true, hoursPerDay, hoursFraction};
+    return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, daysExplicit:!nFromDoses, effectiveDays, multiplier, pattern, intervalK, family, perLiter:true, hoursPerDay, hoursFraction};
   }
   const totalBase=lead.amount*multiplier*effectiveDays*(UNIT_TO_BASE[lead.unit]||1);
-  return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, effectiveDays, multiplier, pattern, intervalK, totalBase, family, perLiter:false};
+  return {ok:true, raw, perDay:lead.amount, unit:lead.unit, days:N, daysExplicit:!nFromDoses, effectiveDays, multiplier, pattern, intervalK, totalBase, family, perLiter:false};
 }
 function parsePackForConsumption(packRaw){
   const raw=(packRaw||"").trim();
@@ -5212,7 +5237,13 @@ function computeMedicationNeed(m, dailyWaterEstimateL){
   const packagesNeeded=Math.ceil(totalBase/pack.base);
   return {ok:true, dose, pack, totalBase, packagesNeeded, usedWaterEstimate};
 }
-const PATTERN_LABEL={daily:"يومية", interval:"دورية (كل عدة أيام)", intermittent:"متقطعة (يوم وأيوم)", twice:"مرتين يوميًا", once:"مرة واحدة"};
+const PATTERN_LABEL={daily:"يومية", interval:"دورية (كل عدة أيام)", intermittent:"متقطعة (يوم وأيوم)", twice:"مرتين يوميًا", once:"مرة واحدة", doses:"عدد جرعات محدد", multi:"عدة مرات يوميًا"};
+function patternLabel(d){
+  if(!d) return "";
+  if(d.pattern==="doses") return d.effectiveDays+" جرعات متواصلة"+((d.daysExplicit&&d.days)?(" على "+d.days+" يوم"):"");
+  if(d.pattern==="multi") return (+Number(d.multiplier).toFixed(1))+" مرات يوميًا × "+d.effectiveDays+" يوم";
+  return PATTERN_LABEL[d.pattern]||d.pattern;
+}
 let LAST_CONSUMPTION_DATA=null; // للاستخدام في تصدير الـ PDF
 function computeMonthlyConsumption(drugName, yearMonth){
   const key=(drugName||"").trim().toLowerCase();
@@ -5418,7 +5449,7 @@ function runConsumptionReport(){
       const comboIcon=e.comboType==='injection'?' 💉':(e.comboType==='water'?' 💧':'');
       return `<tr>
         <td>${e.date}</td><td>${e.clientName}</td><td>${e.doseRaw}${comboIcon}</td><td>${e.packRaw||'—'}</td>
-        <td>${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}${c.dose.perLiter?` (تركيز/لتر — ${c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):''}ماء ${(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)} لتر/يوم)`:''}</td>
+        <td>${patternLabel(c.dose)}${c.dose.perLiter?` (تركيز/لتر — ${c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):''}ماء ${(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)} لتر/يوم)`:''}</td>
         <td>${baseAmountLabel(c.totalBase, c.dose.family)}</td>
       </tr>`;
     } else {
@@ -5510,7 +5541,7 @@ async function exportConsumptionReportPDF(){
       line(`${e.date} — ${e.clientName}`, {size:15, bold:true, gap:2});
       line(`الجرعة: ${e.doseRaw}${e.packRaw?' — العبوة: '+e.packRaw:''}`, {size:13, gap:2, color:"#555"});
       if(c.ok){
-        line(`✅ ${PATTERN_LABEL[c.dose.pattern]||c.dose.pattern}${c.dose.perLiter?' (تركيز/لتر — '+(c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):'')+'ماء '+(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)+' لتر/يوم)':''} — الكمية: ${baseAmountLabel(c.totalBase, c.dose.family)}`, {size:13, gap:8, color:"#1c6b45"});
+        line(`✅ ${patternLabel(c.dose)}${c.dose.perLiter?' (تركيز/لتر — '+(c.dose.hoursPerDay?('سقاية '+c.dose.hoursPerDay+'س/24 ⇐ '):'')+'ماء '+(c.usedWaterEstimate*c.dose.hoursFraction).toFixed(0)+' لتر/يوم)':''} — الكمية: ${baseAmountLabel(c.totalBase, c.dose.family)}`, {size:13, gap:8, color:"#1c6b45"});
         const gk=packGroupKeyInfo(e.packRaw);
         const g=packGroups[gk.key]||(packGroups[gk.key]={base:0, family:c.dose.family, labels:new Set(), count:0, pack:gk.pack});
         g.base+=c.totalBase; g.count++; g.labels.add(gk.label||'—');
