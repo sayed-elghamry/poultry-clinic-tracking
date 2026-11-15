@@ -639,6 +639,15 @@
       </div>
       <div id="consumptionResults"></div>
     </div>
+    <div class="card">
+      <h2>🛠 إدارة أسماء الأصناف (تصحيح / دمج)</h2>
+      <div class="small" style="color:#777;margin-bottom:8px">
+        لتصحيح غلطة في كتابة اسم دواء، أو دمج صنفين مكررين (مثلاً "أموكسي" و"اموكسي"). التعديل بيتطبّق على <b>الكتالوج الثابت وكل الزيارات القديمة</b> اللي فيها الاسم ده. لو الاسم الجديد موجود فعلًا بيتم الدمج. الروشتات القديمة المطبوعة مش بتتأثر، لكن اللي هيتطبع بعد كده هيطلع بالاسم الجديد.
+      </div>
+      <input id="drugMgrSearch" placeholder="🔍 ابحث عن صنف…" oninput="renderDrugManager()" style="width:100%;margin-bottom:8px">
+      <div id="drugMgrList" style="overflow-x:auto"></div>
+      <div id="drugMgrStatus" class="small" style="margin-top:6px"></div>
+    </div>
   </div>
 
   <!-- ============ TAB: FEED FORMULATION (حاسبة تكوين بسيطة أصلية بالبرنامج — مفيش ملف منفصل ولا iframe) ============ -->
@@ -2912,6 +2921,7 @@ function showTab(name){
   }
   if(name==="serologyanalysis") populateSerologyClientSelect();
   if(name==="epidemiology") renderEpiAnalysis();
+  if(name==="consumption") renderDrugManager();
 }
 /* ---------------------- تذكير التقويم لميعاد المتابعة (.ics قابل للإضافة لأي تقويم على الموبايل/الكمبيوتر) ---------------------- */
 function downloadVisitReminderICS(dateStr, title, note){
@@ -4791,8 +4801,90 @@ function buildDrugIndex(){
   });
   DRUG_INDEX=idx;
   buildCompanySuggestions();
+  try{ const cp=document.getElementById("tab-consumption"); if(cp && cp.classList.contains("active") && !window.__drugMgrBusy) renderDrugManager(); }catch(e){}
   const dl=document.getElementById("drugSuggestions");
   if(dl) dl.innerHTML=Object.values(idx).map(e=>`<option value="${e.name}">`).join("");
+}
+/* ---------------------- إدارة أسماء الأصناف: تصحيح / دمج ---------------------- */
+let __drugMgrRows=[];
+function renderDrugManager(){
+  const box=document.getElementById("drugMgrList"); if(!box) return;
+  const q=((document.getElementById("drugMgrSearch")||{}).value||"").trim().toLowerCase();
+  const map={};
+  const add=(name,k)=>{ const key=name.trim().toLowerCase(); if(!key) return null;
+    return map[key]||(map[key]={key,variants:{},visits:0,pack:"",company:"",inCatalog:false}); };
+  (STATE.visits||[]).forEach(v=>{
+    const seen=new Set();
+    (v.medications||[]).forEach(m=>{
+      const nm=(m.drug||"").trim(); if(!nm) return;
+      const e=add(nm); e.variants[nm]=(e.variants[nm]||0)+1;
+      if(!seen.has(e.key)){ e.visits++; seen.add(e.key); }
+      if(m.pack&&!e.pack) e.pack=m.pack; if(m.company&&!e.company) e.company=m.company;
+    });
+  });
+  Object.values(PACK_CATALOG||{}).forEach(c=>{
+    const e=add(c.name||""); if(!e) return;
+    e.inCatalog=true; e.variants[c.name.trim()]=e.variants[c.name.trim()]||0;
+    if(c.pack) e.pack=c.pack; if(c.company) e.company=c.company;
+  });
+  let rows=Object.values(map).sort((a,b)=>a.key.localeCompare(b.key,"ar"));
+  if(q) rows=rows.filter(r=>r.key.includes(q));
+  __drugMgrRows=rows;
+  if(!rows.length){ box.innerHTML='<div class="small" style="color:#999">لا توجد أصناف.</div>'; return; }
+  box.innerHTML='<table style="width:100%;border-collapse:collapse;min-width:520px"><thead><tr style="background:var(--surface2,#f4f6f4)"><th style="padding:6px;text-align:right">الصنف</th><th style="padding:6px">الزيارات</th><th style="padding:6px">العبوة</th><th style="padding:6px">الشركة</th><th style="padding:6px"></th></tr></thead><tbody>'+
+   rows.map((r,i)=>{
+     const names=Object.keys(r.variants); const label=names.sort((a,b)=>(r.variants[b]||0)-(r.variants[a]||0))[0];
+     const alt=names.length>1?'<div class="small" style="color:#b26a00">⚠ مكتوب بأشكال: '+names.map(epiEsc).join(" | ")+'</div>':"";
+     return '<tr style="border-bottom:1px solid #eee"><td style="padding:6px">'+epiEsc(label)+alt+'</td><td style="padding:6px;text-align:center">'+r.visits+'</td><td style="padding:6px;text-align:center">'+epiEsc(r.pack||"—")+'</td><td style="padding:6px;text-align:center">'+epiEsc(r.company||"—")+'</td><td style="padding:6px;text-align:center"><button class="btn" onclick="renameDrug('+i+')">✏ تعديل الاسم</button></td></tr>';
+   }).join("")+'</tbody></table>';
+}
+async function renameDrug(i){
+  const r=__drugMgrRows[i]; if(!r) return;
+  const oldLabel=Object.keys(r.variants).sort((a,b)=>(r.variants[b]||0)-(r.variants[a]||0))[0];
+  const input=prompt("الاسم الصحيح الجديد للصنف:\n(لو كتبت اسم صنف موجود هيتم دمجهم)",oldLabel);
+  if(input===null) return;
+  const newName=input.trim().replace(/\s+/g," ");
+  if(!newName){ alert("الاسم فاضي."); return; }
+  const newKey=newName.toLowerCase();
+  const same=newKey===r.key && Object.keys(r.variants).every(v=>v===newName);
+  if(same) return;
+  const isMerge=newKey!==r.key && !!__drugMgrRows.find(x=>x.key===newKey);
+  const msg=(isMerge?"⚠ دمج: ":"تعديل: ")+"«"+oldLabel+"» ← «"+newName+"»\nهيتغيّر في "+r.visits+" زيارة"+(r.inCatalog?" وفي الكتالوج الثابت":"")+".\nمتأكد؟";
+  if(!confirm(msg)) return;
+  const st=document.getElementById("drugMgrStatus"); window.__drugMgrBusy=true;
+  try{
+    st.textContent="⏳ جاري التعديل…";
+    const matches=name=>(name||"").trim().toLowerCase()===r.key;
+    const ops=[];
+    (STATE.visits||[]).forEach(v=>{
+      const meds=v.medications||[]; if(!meds.some(m=>matches(m.drug))) return;
+      ops.push({ref:fs.collection("visits").doc(v.id), data:{medications:meds.map(m=>matches(m.drug)?{...m,drug:newName}:m)}});
+    });
+    // الكتالوج الثابت
+    const srcCat=Object.values(PACK_CATALOG||{}).filter(c=>matches(c.name));
+    const tgt=newKey!==r.key?PACK_CATALOG[newKey]:null;
+    if(srcCat.length){
+      if(tgt){
+        const merged={name:newName};
+        const s0=srcCat[0];
+        if(!tgt.pack && s0.pack) merged.pack=s0.pack;
+        if(!tgt.company && s0.company) merged.company=s0.company;
+        ops.push({ref:fs.collection("packCatalog").doc(tgt.id), data:merged});
+        srcCat.forEach(c=>ops.push({ref:fs.collection("packCatalog").doc(c.id), del:true}));
+      } else {
+        ops.push({ref:fs.collection("packCatalog").doc(srcCat[0].id), data:{name:newName}});
+        srcCat.slice(1).forEach(c=>ops.push({ref:fs.collection("packCatalog").doc(c.id), del:true}));
+      }
+    }
+    for(let k=0;k<ops.length;k+=400){
+      const b=fs.batch();
+      ops.slice(k,k+400).forEach(o=>o.del?b.delete(o.ref):b.update(o.ref,o.data));
+      await b.commit();
+    }
+    st.innerHTML='<span style="color:#1d6b3f">✅ تم: '+ops.filter(o=>!o.del&&o.ref.path.startsWith("visits")).length+' زيارة اتحدّثت.</span>';
+  }catch(e){
+    st.innerHTML='<span style="color:#b00020">⚠ تعذّر التعديل: '+epiEsc(e.message||e)+'</span>';
+  }finally{ window.__drugMgrBusy=false; setTimeout(renderDrugManager,600); }
 }
 // قائمة أسماء الشركات المقترحة (من الكتالوج الثابت + كل الزيارات) — عشان الاسم يتكتب بنفس الشكل كل مرة
 function buildCompanySuggestions(){
