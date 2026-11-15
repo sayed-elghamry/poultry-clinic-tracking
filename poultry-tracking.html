@@ -553,6 +553,7 @@
       <p class="hint">حدد أيام إعطاء كل دواء — الأدوية اللي على نفس الأيام هتتجمع تلقائيًا تحت نفس عنوان الأيام في الروشتة المطبوعة، بالظبط زي الروشتة الورقية.</p>
       <div id="medRows"></div>
       <datalist id="drugSuggestions"></datalist>
+      <datalist id="companySuggestions"></datalist>
       <button type="button" class="btn sm" onclick="addMedRow()">+ إضافة دواء</button>
       <hr class="divider">
       <h3>التحصينات في هذه الزيارة</h3>
@@ -2884,9 +2885,10 @@ function startListeners(){
     const idx={};
     snap.docs.forEach(d=>{
       const data=d.data(); const key=(data.name||"").trim().toLowerCase();
-      if(key) idx[key]={id:d.id, name:data.name, pack:data.pack};
+      if(key) idx[key]={id:d.id, name:data.name, pack:data.pack, company:data.company||""};
     });
     PACK_CATALOG=idx;
+    buildCompanySuggestions();
   });
 }
 
@@ -4455,7 +4457,7 @@ function buildDrugIndex(){
   const idx={};
   DRUG_CATALOG_SEED.forEach(m=>{
     const name=(m.name||"").trim(); if(!name) return;
-    idx[name.toLowerCase()]={name, dose:m.dose||"", pack:m.pack||"", purpose:m.purpose||"", count:0, lastDate:""};
+    idx[name.toLowerCase()]={name, dose:m.dose||"", pack:m.pack||"", company:m.company||"", purpose:m.purpose||"", count:0, lastDate:""};
   });
   STATE.visits.forEach(v=>{
     (v.medications||[]).forEach(m=>{
@@ -4464,15 +4466,24 @@ function buildDrugIndex(){
       const dose=m.dose||formatMedDose(m);
       const existing=idx[key];
       if(!existing || (v.date||"")>=(existing.lastDate||"")){
-        idx[key]={name, dose:dose||"", pack:m.pack||"", purpose:m.purpose||"", count:(existing?existing.count:0)+1, lastDate:v.date||""};
+        idx[key]={name, dose:dose||"", pack:m.pack||"", company:m.company||(existing&&existing.company)||"", purpose:m.purpose||"", count:(existing?existing.count:0)+1, lastDate:v.date||""};
       } else {
         existing.count++;
       }
     });
   });
   DRUG_INDEX=idx;
+  buildCompanySuggestions();
   const dl=document.getElementById("drugSuggestions");
   if(dl) dl.innerHTML=Object.values(idx).map(e=>`<option value="${e.name}">`).join("");
+}
+// قائمة أسماء الشركات المقترحة (من الكتالوج الثابت + كل الزيارات) — عشان الاسم يتكتب بنفس الشكل كل مرة
+function buildCompanySuggestions(){
+  const set=new Set();
+  Object.values(PACK_CATALOG||{}).forEach(e=>{ if(e.company) set.add(e.company.trim()); });
+  Object.values(DRUG_INDEX||{}).forEach(e=>{ if(e.company) set.add(e.company.trim()); });
+  const dl=document.getElementById("companySuggestions");
+  if(dl) dl.innerHTML=[...set].filter(Boolean).sort((a,b)=>a.localeCompare(b,"ar")).map(c=>`<option value="${c.replace(/"/g,"&quot;")}">`).join("");
 }
 function onMedDrugInput(rowId){
   const row=document.getElementById(rowId); if(!row)return;
@@ -4480,6 +4491,11 @@ function onMedDrugInput(rowId){
   const key=drugEl.value.trim().toLowerCase();
   const packEl=row.querySelector(".m_pack"), purpEl=row.querySelector(".m_purpose"), noteEl=row.querySelector(".m_packNote");
   const catalogHit=PACK_CATALOG[key];
+  const compEl=row.querySelector(".m_company");
+  if(compEl && !compEl.value.trim()){
+    const cHit=(catalogHit&&catalogHit.company)?catalogHit.company:((DRUG_INDEX[key]&&DRUG_INDEX[key].company)||"");
+    if(cHit) compEl.value=cHit;
+  }
   if(catalogHit){
     if(packEl && !packEl.value.trim()) packEl.value=catalogHit.pack;
     if(noteEl) noteEl.textContent="✅ العبوة من الكتالوج الثابت";
@@ -4495,18 +4511,22 @@ function onMedDrugInput(rowId){
 async function savePackToCatalog(rowId){
   const row=document.getElementById(rowId); if(!row)return;
   const drugEl=row.querySelector(".m_drug"), packEl=row.querySelector(".m_pack"), noteEl=row.querySelector(".m_packNote");
-  const name=drugEl.value.trim(), pack=packEl.value.trim();
+  const compEl=row.querySelector(".m_company");
+  const name=drugEl.value.trim(), pack=packEl.value.trim(), company=compEl?compEl.value.trim():"";
   if(!name){ alert("اكتب اسم الدواء الأول."); return; }
-  if(!pack){ alert("اكتب حجم العبوة الأول."); return; }
+  if(!pack && !company){ alert("اكتب حجم العبوة أو اسم الشركة الأول."); return; }
   const key=name.toLowerCase();
   try{
     const existing=PACK_CATALOG[key];
     if(existing){
-      await fs.collection("packCatalog").doc(existing.id).update({name, pack});
+      const upd={name};
+      if(pack) upd.pack=pack;
+      if(company) upd.company=company;
+      await fs.collection("packCatalog").doc(existing.id).update(upd);
     } else {
-      await fs.collection("packCatalog").add({name, pack, createdAt:new Date().toISOString()});
+      await fs.collection("packCatalog").add({name, pack, company, createdAt:new Date().toISOString()});
     }
-    if(noteEl) noteEl.textContent="✅ اتحفظت العبوة كثابتة لهذا الصنف";
+    if(noteEl) noteEl.textContent="✅ اتحفظت العبوة"+(company?" والشركة":"")+" كثابتين لهذا الصنف";
   }catch(e){
     alert("⚠ تعذّر حفظ العبوة: "+(e.message||e));
   }
@@ -5116,9 +5136,10 @@ function addMedRow(){
       <div class="field"><label>العبوة</label>
         <div style="display:flex;gap:6px;align-items:center">
           <input class="m_pack" placeholder="مثال: علبة 100 جم" style="flex:1">
-          <button type="button" class="btn sm" title="احفظ حجم العبوة ده كثابت لهذا الصنف — هيتملأ تلقائيًا في كل مرة" onclick="savePackToCatalog('${id}')" style="flex:0 0 auto;padding:6px 10px">💾</button>
+          <button type="button" class="btn sm" title="احفظ العبوة والشركة دول كثابتين لهذا الصنف — هيتملأوا تلقائيًا في كل مرة" onclick="savePackToCatalog('${id}')" style="flex:0 0 auto;padding:6px 10px">💾</button>
         </div>
         <div class="small m_packNote" style="color:#1c6b45"></div>
+        <input class="m_company" list="companySuggestions" placeholder="🏷 الشركة / صاحب الدواء (داخلي — مش بيظهر في الروشتة)" style="margin-top:6px" autocomplete="off">
       </div>
     </div>
     <div class="grid2" style="margin-top:6px">
@@ -5205,6 +5226,7 @@ function collectMeds(){
       drug:r.querySelector(".m_drug").value.trim(),
       dose:r.querySelector(".m_dose").value.trim(),
       pack:r.querySelector(".m_pack").value.trim(),
+      company:(r.querySelector(".m_company")?r.querySelector(".m_company").value.trim():""),
       diseaseId:isOther?"":selVal,
       diseaseCustom:isOther?r.querySelector(".m_disease_other").value.trim():"",
       purpose:r.querySelector(".m_purpose").value,
@@ -6287,6 +6309,7 @@ function editVisit(id){
       row.querySelector(".m_drug").value=m.drug||"";
       row.querySelector(".m_dose").value=formatMedDose(m); // بيدمج القيم القديمة (كمية/وحدة/لكل) في نص جرعة واحد لو الزيارة قديمة
       row.querySelector(".m_pack").value=m.pack||"";
+      if(row.querySelector(".m_company")) row.querySelector(".m_company").value=m.company||"";
       if(m.diseaseCustom){
         row.querySelector(".m_disease").value="__other__";
         row.querySelector(".m_disease_other").style.display="block";
