@@ -3134,9 +3134,16 @@ function populateClientSelect(){
 function openClientDetail(id){ currentClientDetailId=id; renderClientDetail(id); showTab("clientdetail"); }
 /* ---------------------- ربط كراسات الغمري (كراسة المزرعة) ---------------------- */
 const NOTEBOOK_APP_URL="https://plain-haze-ffa1.poultrylabcenter.workers.dev";
+function openFlockNotebook(flockId){
+  const f=STATE.flocks.find(x=>x.id===flockId); if(!f) return;
+  const c=STATE.clients.find(x=>x.id===f.clientId)||{};
+  const v=(f.notebookLink||c.notebookLink||"").trim(); if(v) openNotebookValue(v);
+}
 async function openFarmNotebook(clientId){
   const c=STATE.clients.find(x=>x.id===clientId); if(!c||!c.notebookLink) return;
-  const v=c.notebookLink.trim();
+  return openNotebookValue(c.notebookLink.trim());
+}
+async function openNotebookValue(v){
   if(/^https?:\/\//i.test(v)){ window.open(v,"_blank","noopener"); return; }
   let copied=false;
   try{ await navigator.clipboard.writeText(v); copied=true; }catch(e){}
@@ -3263,6 +3270,7 @@ function renderClientDetail(id){
           <div class="field"><label>اسم العنبر/الموقع</label><input id="ef_house" value="${f.houseName||''}"></div>
           <div class="field"><label>منطقة هذا العنبر</label><input id="ef_region" list="cl_region_suggest" value="${f.region||''}"></div>
           <div class="field"><label>تاريخ التحميل</label><input id="ef_placement" type="date" value="${f.placementDate||''}"></div>
+          <div class="field" style="grid-column:1/-1"><label>📒 رابط / كود كراسة هذه الدورة <span class="small" style="color:#777">(اختياري)</span></label><input id="ef_notebook" dir="ltr" style="text-align:left" value="${epiEsc(f.notebookLink||'')}" placeholder="الصق الرابط أو الكود"></div>
           <div class="field"><label>نوع الطائر</label>
             <select id="ef_birdtype">
               <option value="broiler"${f.birdType==='broiler'?' selected':''}>تسمين</option>
@@ -3297,6 +3305,7 @@ function renderClientDetail(id){
       <div class="row" style="margin-top:6px">
         ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:`<button class="btn sm pri" onclick="generateCycleReportPDF('${f.id}')">📄 ${f.cycleReportUrl?'إعادة توليد التقرير':'توليد تقرير الدورة الشامل'}</button>`}
         ${f.status==='closed'&&f.cycleReportUrl?`<a class="btn sm" href="${f.cycleReportUrl}" target="_blank">🔗 عرض تقرير الدورة المحفوظ${f.fcrActual!=null?' (FCR '+f.fcrActual.toFixed(2)+')':''}</a>`:''}
+        ${(f.notebookLink||c.notebookLink)?`<button class="btn sm" onclick="openFlockNotebook('${f.id}')">📒 كراسة ${f.notebookLink?'الدورة':'المزرعة'}</button>`:''}
         <button class="btn sm" onclick="startEditFlock('${f.id}')">✏️ تعديل الدورة</button>
         <button class="btn sm danger" onclick="deleteFlock('${f.id}')">🗑 حذف الدورة</button>
         <button class="btn sm" onclick="exportFlockExcel('${f.id}')">📊 تصدير Excel</button>
@@ -3341,8 +3350,9 @@ async function saveFlockEdit(id){
   const birdType=document.getElementById("ef_birdtype").value;
   const birdCountInitial=document.getElementById("ef_birdcount0").value?parseInt(document.getElementById("ef_birdcount0").value):null;
   const status=document.getElementById("ef_status").value;
+  const notebookLink=(document.getElementById("ef_notebook")||{value:""}).value.trim();
   try{
-    await fs.collection("flocks").doc(id).update({houseName,region,placementDate,birdType,birdCountInitial,status});
+    await fs.collection("flocks").doc(id).update({houseName,region,placementDate,birdType,birdCountInitial,status,notebookLink});
     editingFlockId=null;
   }catch(e){
     alert("⚠ تعذّر حفظ تعديل الدورة: "+(e.message||e));
@@ -3373,8 +3383,14 @@ async function closeFlock(flockId){
     const weightStr=prompt("متوسط وزن الطائر عند التسويق (بالجرام):");
     actualAvgWeightG=weightStr?parseFloat(weightStr):null;
   }
+  // كراسة الدورة: لو العميل نسي يسجّلها أثناء الدورة، تتلصق هنا عند الإغلاق (اختياري)
+  const fl0=STATE.flocks.find(f=>f.id===flockId)||{};
+  const cl0=STATE.clients.find(c=>c.id===fl0.clientId)||{};
+  const nbIn=prompt("📒 (اختياري) الصق رابط أو كود كراسة هذه الدورة لو متاح — سيب فاضي للتخطي:", fl0.notebookLink||cl0.notebookLink||"");
+  const nbUpd=(nbIn&&nbIn.trim())?{notebookLink:nbIn.trim()}:{};
   try{
     await fs.collection("flocks").doc(flockId).update({
+      ...nbUpd,
       status:"closed", closedAt:new Date().toISOString(),
       actualTotalFeedKg: (actualTotalFeedKg&&!isNaN(actualTotalFeedKg))?actualTotalFeedKg:null,
       actualAvgWeightG: (actualAvgWeightG&&!isNaN(actualAvgWeightG))?actualAvgWeightG:null
