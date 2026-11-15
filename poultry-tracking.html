@@ -752,6 +752,7 @@
       <h2 id="cd_name" style="margin-top:10px"></h2>
       <div class="hint" id="cd_meta"></div>
       <div class="grid3" id="cd_stats" style="margin-top:10px"></div>
+      <div id="cd_compare" style="margin-top:10px"></div>
       <hr class="divider">
       <h3>الدورات</h3>
       <div id="cd_flocks"></div>
@@ -3123,6 +3124,99 @@ function populateClientSelect(){
   if(cur)sel.value=cur;
 }
 function openClientDetail(id){ currentClientDetailId=id; renderClientDetail(id); showTab("clientdetail"); }
+/* ---------------------- مقارنة دورات العميل ---------------------- */
+let __cmpOpen=false, __cmpType="";
+const CMP_COLORS=["#1d6b3f","#c0392b","#2c6fbb","#d68910","#7d3c98","#17a589"];
+function cycleStats(f){
+  const visits=STATE.visits.filter(v=>v.flockId===f.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const byDate={}; let totalDead=0;
+  visits.forEach(v=>(v.mortalityLog||[]).forEach(m=>{ const d=parseInt(m.dead)||0; if(!d||!m.date) return; byDate[m.date]=(byDate[m.date]||0)+d; totalDead+=d; }));
+  const init=parseFloat(f.birdCountInitial)||0;
+  let mortPct=null;
+  if(totalDead&&init) mortPct=totalDead/init*100;
+  else { const lc=visits.slice().reverse().find(v=>v.mortalityCum&&!isNaN(parseFloat(v.mortalityCum))); if(lc) mortPct=parseFloat(lc.mortalityCum); }
+  const maxAge=Math.max(0,...visits.map(v=>parseInt(v.ageDays)||0));
+  const days=(f.status==="closed"&&f.closedAt&&f.placementDate)?daysBetween(f.placementDate,f.closedAt.slice(0,10))+1:maxAge;
+  const live=init?(totalDead?init-totalDead:(mortPct!=null?Math.round(init*(1-mortPct/100)):init)):0;
+  let fcr=(f.fcrActual!=null&&!isNaN(f.fcrActual))?Number(f.fcrActual):null;
+  if(fcr==null && f.actualTotalFeedKg && f.actualAvgWeightG && live){ fcr=f.actualTotalFeedKg/(live*f.actualAvgWeightG/1000); }
+  const dx={}; visits.forEach(v=>{ const l=(v.confirmedDiagnoses&&v.confirmedDiagnoses.length)?v.confirmedDiagnoses.map(e=>e.label):(v.confirmedDiagnosisId?[(DISEASES.find(x=>x.id===v.confirmedDiagnosisId)||{}).ar].filter(Boolean):[]); l.forEach(x=>dx[x]=1); });
+  let abx=0, drugs=0; visits.forEach(v=>(v.medications||[]).forEach(m=>{ drugs++; if(m.purpose==="antibiotic") abx++; }));
+  const curve=Object.keys(byDate).sort().map(d=>({age:daysBetween(f.placementDate,d)+1,dead:byDate[d]}));
+  let cum=0; const pts=curve.map(c=>{ cum+=c.dead; return {age:c.age,pct:init?cum/init*100:null}; }).filter(p=>p.pct!=null&&p.age>=0);
+  return {f,visits:visits.length,mortPct,days,fcr,weight:f.actualAvgWeightG||null,dx:Object.keys(dx),abx,drugs,pts};
+}
+function setCmp(open,type){ if(open!==undefined) __cmpOpen=open; if(type!==undefined) __cmpType=type; if(currentClientDetailId) renderCycleComparison(currentClientDetailId); }
+function renderCycleComparison(id){
+  const box=document.getElementById("cd_compare"); if(!box) return;
+  const all=STATE.flocks.filter(f=>f.clientId===id).sort((a,b)=>new Date(a.placementDate)-new Date(b.placementDate));
+  const types=[...new Set(all.map(f=>f.birdType))];
+  if(all.length<2){ box.innerHTML=""; return; }
+  if(!__cmpOpen){ box.innerHTML='<button class="btn" onclick="setCmp(true)">📊 مقارنة دورات العميل ('+all.length+')</button>'; return; }
+  if(!__cmpType||!types.includes(__cmpType)) __cmpType=types.includes(all[all.length-1].birdType)?all[all.length-1].birdType:types[0];
+  const list=all.filter(f=>f.birdType===__cmpType);
+  const rows=list.map(cycleStats);
+  const e=epiEsc, fmt=(x,d)=>x==null||isNaN(x)?"—":Number(x).toFixed(d);
+  const typeSel='<select onchange="setCmp(undefined,this.value)">'+types.map(t=>'<option value="'+t+'"'+(t===__cmpType?' selected':'')+'>'+e(BIRD_LABEL[t]||t)+'</option>').join("")+'</select>';
+  const tbl='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:720px"><thead><tr style="background:var(--surface2,#f4f6f4)">'+
+    ['','العنبر','التحميل','الحالة','العمر (يوم)','العدد','النفوق %','FCR','وزن (جم)','زيارات','أدوية (مضاد حيوي)','تشخيصات مؤكدة'].map(h=>'<th style="padding:6px;text-align:center">'+h+'</th>').join("")+'</tr></thead><tbody>'+
+    rows.map((r,i)=>'<tr style="border-bottom:1px solid #eee"><td style="padding:6px;text-align:center"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:'+CMP_COLORS[i%CMP_COLORS.length]+'"></span></td>'+
+      '<td style="padding:6px">'+e(r.f.houseName||"—")+(r.f.region?'<div class="small" style="color:#777">📍 '+e(r.f.region)+'</div>':'')+'</td>'+
+      '<td style="padding:6px;text-align:center">'+e(r.f.placementDate||"—")+'</td>'+
+      '<td style="padding:6px;text-align:center">'+(r.f.status==="open"?"مفتوحة":"مغلقة")+'</td>'+
+      '<td style="padding:6px;text-align:center">'+(r.days||"—")+'</td>'+
+      '<td style="padding:6px;text-align:center">'+(r.f.birdCountInitial||"—")+'</td>'+
+      '<td style="padding:6px;text-align:center;font-weight:700">'+fmt(r.mortPct,2)+'</td>'+
+      '<td style="padding:6px;text-align:center;font-weight:700">'+fmt(r.fcr,2)+'</td>'+
+      '<td style="padding:6px;text-align:center">'+(r.weight?Math.round(r.weight):"—")+'</td>'+
+      '<td style="padding:6px;text-align:center">'+r.visits+'</td>'+
+      '<td style="padding:6px;text-align:center">'+r.drugs+' ('+r.abx+')</td>'+
+      '<td style="padding:6px">'+(r.dx.length?r.dx.map(e).join("، "):"—")+'</td></tr>').join("")+'</tbody></table></div>';
+  // تفسير
+  const notes=[]; const closed=rows.filter(r=>r.f.status==="closed");
+  const wm=rows.filter(r=>r.mortPct!=null);
+  if(wm.length>=2){
+    const best=wm.reduce((a,b)=>b.mortPct<a.mortPct?b:a), worst=wm.reduce((a,b)=>b.mortPct>a.mortPct?b:a);
+    notes.push("أقل نفوق: "+(best.f.houseName||"—")+" ("+best.f.placementDate+") بنسبة "+fmt(best.mortPct,2)+"%، وأعلى نفوق: "+(worst.f.houseName||"—")+" ("+worst.f.placementDate+") بنسبة "+fmt(worst.mortPct,2)+"%.");
+    const last=wm[wm.length-1], prev=wm[wm.length-2];
+    const d=last.mortPct-prev.mortPct;
+    if(Math.abs(d)>=0.5) notes.push("آخر دورة مقارنة بالسابقة لها: النفوق "+(d>0?"زاد":"قلّ")+" بمقدار "+fmt(Math.abs(d),2)+" نقطة مئوية. (الفرق بين دورة مفتوحة ومغلقة مش دقيق لاختلاف العمر.)");
+  }
+  const wf=closed.filter(r=>r.fcr!=null);
+  if(wf.length>=2){
+    const b=wf.reduce((a,c)=>c.fcr<a.fcr?c:a), w=wf.reduce((a,c)=>c.fcr>a.fcr?c:a);
+    notes.push("أفضل FCR: "+fmt(b.fcr,2)+" ("+b.f.placementDate+")، وأضعفه: "+fmt(w.fcr,2)+" ("+w.f.placementDate+").");
+  } else notes.push("بيانات FCR ناقصة — بتتسجل عند إغلاق الدورة (علف كلي + متوسط وزن).");
+  const dxCount={}; rows.forEach(r=>r.dx.forEach(x=>dxCount[x]=(dxCount[x]||0)+1));
+  const rec=Object.entries(dxCount).filter(([k,v])=>v>=2).sort((a,b)=>b[1]-a[1]);
+  if(rec.length) notes.push("أمراض متكررة في أكتر من دورة: "+rec.map(([k,v])=>k+" ("+v+" دورات)").join("، ")+" — ده بيشير لمشكلة مزمنة في الموقع (تطهير/تحصين/مصدر كتاكيت) ويستاهل مراجعة برنامج الوقاية.");
+  const ab=rows.filter(r=>r.f.status==="closed"&&r.drugs);
+  if(ab.length>=2){ const hi=ab.reduce((a,c)=>c.abx>a.abx?c:a); if(hi.abx>0) notes.push("أكتر دورة استخدامًا للمضادات الحيوية: "+(hi.f.houseName||"—")+" ("+hi.f.placementDate+") بـ"+hi.abx+" صنف."); }
+  const canvasNeeded=rows.filter(r=>r.pts.length>=2).length>=1;
+  box.innerHTML='<div class="card" style="margin:0;border:1px solid #cfe3d6"><div class="row" style="justify-content:space-between;align-items:center"><b>📊 مقارنة دورات العميل</b><span>نوع الطائر: '+typeSel+' <button class="btn sm" onclick="setCmp(false)">إخفاء</button></span></div>'+
+    (rows.length<2?'<p class="hint">في دورة واحدة بس من هذا النوع — مفيش مقارنة.</p>':'')+tbl+
+    (canvasNeeded?'<div style="margin-top:10px"><b class="small">منحنى النفوق التراكمي % حسب العمر</b><canvas id="cmpCanvas" width="900" height="320" style="width:100%;max-width:900px;background:#fff;border:1px solid #eee;border-radius:6px"></canvas></div>':'<p class="hint">منحنى النفوق محتاج سجل نفوق يومي (بالتاريخ) في الزيارات.</p>')+
+    '<div style="margin-top:10px"><b>📝 التفسير</b><ul style="margin:6px 18px 0 0;line-height:1.9">'+notes.map(n=>'<li>'+e(n)+'</li>').join("")+'</ul>'+
+    '<div class="small" style="color:#777;margin-top:4px">التفسير آلي من الأرقام المسجّلة؛ النفوق يعتمد على سجل النفوق بالزيارات، والمقارنة العادلة بين دورات بنفس العمر.</div></div></div>';
+  if(canvasNeeded){
+    const cv=document.getElementById("cmpCanvas"), ctx=cv.getContext("2d"), W=cv.width, H=cv.height, L=50, R=20, T=20, B=40;
+    const maxAge=Math.max(...rows.map(r=>Math.max(0,...r.pts.map(p=>p.age))),7);
+    const maxPct=Math.max(...rows.map(r=>Math.max(0,...r.pts.map(p=>p.pct))),1)*1.1;
+    const X=a=>L+(a/maxAge)*(W-L-R), Y=p=>H-B-(p/maxPct)*(H-T-B);
+    ctx.font="12px Tahoma,Arial"; ctx.strokeStyle="#e5e5e5"; ctx.fillStyle="#666"; ctx.textAlign="right";
+    for(let k=0;k<=4;k++){ const v=maxPct*k/4; ctx.beginPath(); ctx.moveTo(L,Y(v)); ctx.lineTo(W-R,Y(v)); ctx.stroke(); ctx.fillText(v.toFixed(1)+"%",L-6,Y(v)+4); }
+    ctx.textAlign="center"; const step=maxAge>35?7:(maxAge>14?5:2);
+    for(let a=0;a<=maxAge;a+=step) ctx.fillText(a,X(a),H-B+16);
+    ctx.fillText("العمر (يوم)",(W+L)/2,H-6);
+    rows.forEach((r,i)=>{
+      if(r.pts.length<1) return;
+      ctx.strokeStyle=CMP_COLORS[i%CMP_COLORS.length]; ctx.fillStyle=ctx.strokeStyle; ctx.lineWidth=2.2; ctx.beginPath();
+      ctx.moveTo(X(0),Y(0)); r.pts.forEach(p=>ctx.lineTo(X(p.age),Y(p.pct))); ctx.stroke();
+      r.pts.forEach(p=>{ ctx.beginPath(); ctx.arc(X(p.age),Y(p.pct),2.5,0,7); ctx.fill(); });
+    });
+    ctx.lineWidth=1;
+  }
+}
 function renderClientDetail(id){
   const c=STATE.clients.find(x=>x.id===id); if(!c)return;
   document.getElementById("cd_name").textContent=c.name;
@@ -3137,6 +3231,7 @@ function renderClientDetail(id){
     <div class="statbox"><div class="num">${flocks.length}</div><div class="lbl">إجمالي الدورات</div></div>
     <div class="statbox"><div class="num">${openCount}</div><div class="lbl">دورات مفتوحة</div></div>
     <div class="statbox"><div class="num">${lastVisit?lastVisit.date:'—'}</div><div class="lbl">آخر زيارة</div></div>`;
+  try{ renderCycleComparison(id); }catch(e){ console.warn("cycle compare",e); }
   const host=document.getElementById("cd_flocks");
   if(!flocks.length){host.innerHTML='<p class="hint">لا توجد دورات مسجّلة لهذا العميل بعد.</p>';return;}
   host.innerHTML=flocks.map(f=>{
