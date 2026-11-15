@@ -254,6 +254,12 @@
         </div>
       </div>
       <div class="grid3" style="margin-top:8px">
+        <div class="field" style="grid-column:1/-1"><label>📒 رابط / كود كراسة المزرعة <span class="small" style="color:#777">(اختياري — لو العميل مسجّل بياناته في كراسات الغمري)</span></label>
+          <input id="cl_notebook" placeholder="الصق رابط عرض الدكتور بالكود، أو اكتب كود المزرعة فقط" dir="ltr" style="text-align:left">
+          <div class="small" style="color:#777;margin-top:2px">لو الصقت رابط كامل بيتفتح مباشرة من صفحة العميل. لو كتبت الكود بس، بيتنسخ تلقائيًا ويتفتح تطبيق الكراسات عشان تلصقه.</div>
+        </div>
+      </div>
+      <div class="grid3" style="margin-top:8px">
         <div class="field"><label>نوع التعامل</label>
           <select id="cl_type"><option value="visit">عميل زيارة</option><option value="monitoring">عميل متابعة (Batch Tracking)</option></select></div>
         <div class="field"><label>نوع الطائر الأساسي</label>
@@ -3022,6 +3028,7 @@ async function saveClient(){
     name, phone:document.getElementById("cl_phone").value.trim(),
     address:document.getElementById("cl_address").value.trim(),
     region:document.getElementById("cl_region").value.trim(),
+    notebookLink:document.getElementById("cl_notebook").value.trim(),
     clientType:document.getElementById("cl_type").value,
     birdType:document.getElementById("cl_birdtype").value
   };
@@ -3036,7 +3043,7 @@ async function saveClient(){
     }else{
       data.createdAt=new Date().toISOString();
       await fs.collection("clients").add(data);
-      document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";document.getElementById("cl_region").value="";
+      document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";document.getElementById("cl_region").value="";document.getElementById("cl_notebook").value="";
     }
   }catch(e){
     alert("⚠ تعذّر حفظ العميل: "+(e.message||e));
@@ -3052,6 +3059,7 @@ function editClient(id){
   document.getElementById("cl_phone").value=c.phone||"";
   document.getElementById("cl_address").value=c.address||"";
   document.getElementById("cl_region").value=c.region||"";
+  document.getElementById("cl_notebook").value=c.notebookLink||"";
   document.getElementById("cl_type").value=c.clientType||"visit";
   document.getElementById("cl_birdtype").value=c.birdType||"broiler";
   document.getElementById("clSaveBtn").textContent="حفظ التعديلات";
@@ -3060,7 +3068,7 @@ function editClient(id){
 }
 function cancelClientEdit(){
   editingClientId=null;
-  document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";document.getElementById("cl_region").value="";
+  document.getElementById("cl_name").value="";document.getElementById("cl_phone").value="";document.getElementById("cl_address").value="";document.getElementById("cl_region").value="";document.getElementById("cl_notebook").value="";
   document.getElementById("cl_type").value="visit"; document.getElementById("cl_birdtype").value="broiler";
   document.getElementById("clSaveBtn").textContent="حفظ العميل";
   document.getElementById("clCancelRow").style.display="none";
@@ -3124,6 +3132,17 @@ function populateClientSelect(){
   if(cur)sel.value=cur;
 }
 function openClientDetail(id){ currentClientDetailId=id; renderClientDetail(id); showTab("clientdetail"); }
+/* ---------------------- ربط كراسات الغمري (كراسة المزرعة) ---------------------- */
+const NOTEBOOK_APP_URL="https://plain-haze-ffa1.poultrylabcenter.workers.dev";
+async function openFarmNotebook(clientId){
+  const c=STATE.clients.find(x=>x.id===clientId); if(!c||!c.notebookLink) return;
+  const v=c.notebookLink.trim();
+  if(/^https?:\/\//i.test(v)){ window.open(v,"_blank","noopener"); return; }
+  let copied=false;
+  try{ await navigator.clipboard.writeText(v); copied=true; }catch(e){}
+  alert(copied?("✅ اتنسخ كود المزرعة: "+v+"\nالصقه في شاشة الدخول بتطبيق الكراسات."):("كود المزرعة: "+v+"\n(انسخه والصقه في شاشة الدخول بتطبيق الكراسات)"));
+  window.open(NOTEBOOK_APP_URL,"_blank","noopener");
+}
 /* ---------------------- مقارنة دورات العميل ---------------------- */
 let __cmpOpen=false, __cmpType="";
 const CMP_COLORS=["#1d6b3f","#c0392b","#2c6fbb","#d68910","#7d3c98","#17a589"];
@@ -3222,7 +3241,8 @@ function renderClientDetail(id){
   document.getElementById("cd_name").textContent=c.name;
   document.getElementById("cd_meta").innerHTML=
     `<span class="chip ${c.clientType==='monitoring'?'monitor':'visit'}">${c.clientType==='monitoring'?'عميل متابعة':'عميل زيارة'}</span>
-     <span class="chip closed">${BIRD_LABEL[c.birdType]||c.birdType}</span> ${c.region?`<span class="chip">📍 ${c.region}</span>`:''} ${c.phone||''} ${c.address?'· '+c.address:''}`;
+     <span class="chip closed">${BIRD_LABEL[c.birdType]||c.birdType}</span> ${c.region?`<span class="chip">📍 ${c.region}</span>`:''} ${c.phone||''} ${c.address?'· '+c.address:''}
+     ${c.notebookLink?`<button class="btn sm pri" style="margin-inline-start:6px" onclick="openFarmNotebook('${c.id}')">📒 فتح كراسة المزرعة</button>`:''}`;
   const flocks=STATE.flocks.filter(f=>f.clientId===id).sort((a,b)=>new Date(b.placementDate)-new Date(a.placementDate));
   const visitsAll=STATE.visits.filter(v=>v.clientId===id);
   const openCount=flocks.filter(f=>f.status==="open").length;
