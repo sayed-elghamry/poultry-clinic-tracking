@@ -211,6 +211,9 @@
     <div class="grid3" id="dashStats"></div>
     <div class="row" style="margin:6px 0">
       <button class="btn sm" onclick="exportAllStatsExcel()">📊 تصدير إحصائي شامل (Excel) — كل الحالات</button>
+      <select id="st_period" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px"><option value="12">آخر 12 شهر</option><option value="6">آخر 6 شهور</option><option value="3">آخر 3 شهور</option><option value="all">كل البيانات</option></select>
+      <select id="st_species" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px"><option value="">كل الأنواع</option><option value="chicken">دجاج</option><option value="duck">بط</option><option value="turkey">رومي</option><option value="pigeon">حمام</option><option value="ostrich">نعام</option></select>
+      <button class="btn sm pri" id="btnStatsPdf" onclick="exportStatsReportPDF()">📄 تقرير إحصائي PDF (جداول + منحنيات + تفسير)</button>
       <button class="btn sm pri" id="btnBackupJson" onclick="backupAllData('json')">💾 نسخة احتياطية كاملة (JSON)</button>
       <button class="btn sm" id="btnBackupXlsx" onclick="backupAllData('xlsx')">🗂 نسخة احتياطية (Excel)</button>
     </div>
@@ -3872,6 +3875,266 @@ async function backupAllData(format){
     if(btn){ btn.disabled=false; btn.textContent=old; }
   }
 }
+/* ---------------------- التقرير الإحصائي الشامل (PDF): جداول + منحنيات + تفسير ---------------------- */
+function stRange(){
+  const p=document.getElementById("st_period").value;
+  if(p==="all") return {from:null,to:null,label:"كل البيانات"};
+  const d=new Date(); d.setMonth(d.getMonth()-parseInt(p,10));
+  return {from:d.toISOString().slice(0,10),to:new Date().toISOString().slice(0,10),label:"آخر "+p+" شهر"};
+}
+function stCollect(){
+  const {from,to,label}=stRange();
+  const species=document.getElementById("st_species").value;
+  const flockMap=new Map(STATE.flocks.map(f=>[f.id,f]));
+  const visits=STATE.visits.filter(v=>v.date&&(!from||v.date>=from)&&(!to||v.date<=to)).filter(v=>{
+    if(!species) return true; const f=flockMap.get(v.flockId); return f&&epiSpecies(f.birdType)===species;
+  });
+  const clients=new Set(visits.map(v=>v.clientId)), flocks=new Set(visits.map(v=>v.flockId));
+  // الأمراض: مؤكد (دورات مميّزة) + ترجيح أول
+  const dx=new Map(); const flocksWithDx=new Set(); let visitsWithDx=0;
+  const getD=(id,label)=>{ let e=dx.get(id); if(!e){ e={id,label,flocks:new Set(),visits:0,suspected:0}; dx.set(id,e);} return e; };
+  visits.forEach(v=>{
+    const list=epiVisitDx(v).filter(d=>d&&d.id&&d.id!=="followup");
+    if(list.length){ visitsWithDx++; flocksWithDx.add(v.flockId); }
+    list.forEach(d=>{ const dd=DISEASES.find(x=>x.id===d.id); const e=getD(d.id,dd?dd.ar:(d.label||d.id)); e.flocks.add(v.flockId); e.visits++; });
+    const top=v.diagnosis&&v.diagnosis.topDiagnoses&&v.diagnosis.topDiagnoses[0];
+    if(top&&top.id&&top.id!=="followup"){ getD(top.id,top.ar||top.id).suspected++; }
+  });
+  const dxRows=[...dx.values()].map(e=>({id:e.id,label:e.label,flocks:e.flocks.size,visits:e.visits,suspected:e.suspected}))
+    .sort((a,b)=>(b.flocks-a.flocks)||(b.suspected-a.suspected));
+  // منحنى النفوق
+  const byAge={};
+  visits.forEach(v=>{
+    if(v.ageDays==null||v.mortalityDaily===""||v.mortalityDaily==null) return;
+    const m=parseFloat(v.mortalityDaily); if(isNaN(m)) return;
+    (byAge[v.ageDays]=byAge[v.ageDays]||[]).push(m);
+  });
+  const curve=Object.keys(byAge).map(Number).sort((a,b)=>a-b).map(age=>({age,avg:byAge[age].reduce((s,x)=>s+x,0)/byAge[age].length,n:byAge[age].length}));
+  // الأدوية
+  const dm={};
+  visits.forEach(v=>(v.medications||[]).forEach(m=>{
+    if(!m.response||!m.drug) return;
+    const eff=m.diseaseId||v.confirmedDiagnosisId||"";
+    const k=m.drug.trim().toLowerCase()+"|"+eff;
+    dm[k]=dm[k]||{drug:m.drug,disease:eff?dxName(eff):"—",excellent:0,good:0,partial:0,weak:0,failed:0};
+    dm[k][m.response]=(dm[k][m.response]||0)+1;
+  }));
+  const drugs=Object.values(dm).map(d=>{ const total=d.excellent+d.good+d.partial+d.weak+d.failed; return {...d,total,success:total?Math.round((d.excellent+d.good+d.partial)/total*100):0}; })
+    .sort((a,b)=>b.total-a.total);
+  // المناطق
+  const ep=epiCollect({from,to,species});
+  const regions=[...ep.regions.values()].filter(r=>r.key!=="__none__").map(r=>({label:r.label,...epiRegionStats(r)})).sort((a,b)=>b.nFlocks-a.nFlocks);
+  return {label,species,visits,clients:clients.size,flocks:flocks.size,flocksWithDx:flocksWithDx.size,visitsWithDx,dxRows,curve,drugs,regions,missingRegion:ep.missing.size};
+}
+function stInterpDiseases(S){
+  const out=[]; const rows=S.dxRows.filter(r=>r.flocks>0);
+  if(!rows.length){ out.push("لا توجد تشخيصات مؤكدة مسجّلة في الفترة المختارة، فالتحليل مبني على الترجيحات الأولية فقط."); return out; }
+  const tot=S.flocksWithDx; const t=rows[0];
+  out.push(`أكتر مرض مؤكد: ${t.label} في ${t.flocks} دورة (${Math.round(t.flocks/tot*100)}% من الدورات المشخّصة وعددها ${tot}).`);
+  if(rows.length>=3){ const s3=rows.slice(0,3).reduce((n,r)=>n+r.flocks,0); out.push(`أعلى ثلاثة أمراض (${rows.slice(0,3).map(r=>r.label).join("، ")}) معًا يغطّوا ${s3} تشخيص من ${rows.reduce((n,r)=>n+r.flocks,0)} (الدورة الواحدة ممكن يتسجّل لها أكتر من مرض).`); }
+  const unconf=S.dxRows.filter(r=>r.suspected>=3&&r.flocks===0);
+  if(unconf.length) out.push(`ترجيحات متكررة بدون تأكيد: ${unconf.map(r=>`${r.label} (${r.suspected} مرة)`).join("، ")} — يُفضّل التأكيد المعملي (سيرولوجي/PCR/عزل) قبل اعتمادها في برنامج الوقاية.`);
+  if(tot<10) out.push(`تنبيه: عدد الدورات المشخّصة (${tot}) قليل، فالنسب إرشادية وتتغيّر بسرعة مع تراكم البيانات.`);
+  return out;
+}
+function stInterpMortality(S){
+  const out=[]; const c=S.curve;
+  if(!c.length){ out.push("مفيش بيانات نفوق يومي مسجّلة في الفترة دي."); return out; }
+  const peak=c.reduce((a,b)=>b.avg>a.avg?b:a);
+  out.push(`أعلى متوسط نفوق يومي عند عمر ${peak.age} يوم (${peak.avg.toFixed(2)}% من ${peak.n} زيارة).`);
+  const wk={}; c.forEach(p=>{ const w=Math.ceil(Math.max(p.age,1)/7); (wk[w]=wk[w]||[]).push(p); });
+  const wAvg=Object.keys(wk).map(w=>({w:+w,avg:wk[w].reduce((s,p)=>s+p.avg*p.n,0)/wk[w].reduce((s,p)=>s+p.n,0)}));
+  const pw=wAvg.reduce((a,b)=>b.avg>a.avg?b:a);
+  out.push(`أعلى أسبوع في المتوسط: الأسبوع ${pw.w} (${pw.avg.toFixed(2)}% يوميًا). قارن بنفوق السلالة المرجعي لنفس العمر.`);
+  out.push("ملحوظة مهمة: النفوق مأخوذ من الزيارات المسجّلة، وغالبًا بتكون وقت المشاكل، فالمنحنى ده بيعكس الحالات المرضية أكتر من متوسط كل القطعان.");
+  if(c.some(p=>p.n<3)) out.push("بعض الأعمار فيها زيارة أو زيارتين فقط، فنقاطها أقل ثباتًا.");
+  return out;
+}
+function stInterpDrugs(S){
+  const out=[]; const rows=S.drugs;
+  if(!rows.length){ out.push("لم تُسجَّل استجابات للأدوية في الفترة دي (تُسجَّل في المتابعة)."); return out; }
+  const ok=rows.filter(r=>r.total>=3);
+  if(ok.length){
+    const best=ok.slice().sort((a,b)=>b.success-a.success||b.total-a.total)[0];
+    out.push(`أعلى نسبة نجاح بين الأدوية اللي لها 3 حالات أو أكتر: ${best.drug} في ${best.disease} (${best.success}% من ${best.total} حالة).`);
+    const worst=ok.slice().sort((a,b)=>a.success-b.success||b.total-a.total)[0];
+    if(worst!==best&&worst.success<70) out.push(`أضعف استجابة: ${worst.drug} في ${worst.disease} (${worst.success}% من ${worst.total} حالة) — راجع الجرعة والمدة وحساسية الميكروب.`);
+  }else out.push("كل دواء له أقل من 3 حالات، فالنسب غير كافية للمقارنة بعد.");
+  out.push("نسبة النجاح = (ممتازة + جيدة + جزئية) ÷ كل الحالات، وهي تقييم الطبيب للاستجابة ومتأثرة بعوامل أخرى (التشخيص، التوقيت، الإدارة).");
+  return out;
+}
+function stInterpRegions(S){
+  const out=[]; const R=S.regions.filter(r=>r.list.length);
+  if(!R.length){ out.push("مفيش مناطق محددة لها تشخيصات مؤكدة بعد — عبّي المناطق من تاب التحليل الوبائي."); }
+  else{
+    R.slice(0,4).forEach(r=>{ const t=r.list[0]; out.push(`${r.label}: أكتر مرض ${t.label} (${t.flocks} من ${r.nFlocks} دورة، ${Math.round(t.pct*100)}%)${t.flocks>=3&&t.pct>=0.2?" — متكرر":""}.`); });
+  }
+  if(S.missingRegion) out.push(`⚠ ${S.missingRegion} دورة بدون منطقة غير مشمولة هنا.`);
+  return out;
+}
+
+async function exportStatsReportPDF(){
+  const S=stCollect();
+  if(!S.visits.length){ alert("لا توجد زيارات في الفترة/النوع المختار."); return; }
+  const btn=document.getElementById("btnStatsPdf"); const old=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="⏳ جارِ إعداد التقرير..."; }
+  try{
+    const logo=new Image(); logo.src=LOGO_B64; let logoOk=true;
+    await Promise.race([new Promise(res=>{logo.onload=res;logo.onerror=()=>{logoOk=false;res();};}),new Promise(res=>setTimeout(()=>{logoOk=false;res();},4000))]);
+    const scale=2.4, W=Math.round(210*scale*3.7795), H=Math.round(297*scale*3.7795);
+    const R=W*0.93, L=W*0.07, CW=R-L, FONT="Tahoma, Arial";
+    const pages=[]; let canvas,ctx,y;
+    const spLabel=S.species?(EPI_SPECIES_LABEL[S.species]||S.species):"كل الأنواع";
+    function newPage(first){
+      canvas=document.createElement("canvas"); canvas.width=W; canvas.height=H; ctx=canvas.getContext("2d");
+      ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
+      let top=H*0.02;
+      if(first){
+        const ls=W*0.10; if(logoOk){ try{ ctx.drawImage(logo,(W-ls)/2,top,ls,ls);}catch(e){} }
+        ctx.direction="rtl"; ctx.textAlign="center"; ctx.fillStyle="#1c6b45"; ctx.font=`bold ${Math.round(22*scale)}px ${FONT}`;
+        ctx.fillText("التقرير الإحصائي الشامل",W/2,top+(logoOk?ls:0)+Math.round(30*scale));
+        ctx.font=`${Math.round(13*scale)}px ${FONT}`; ctx.fillStyle="#555";
+        ctx.fillText(`${S.label} — ${spLabel} — صدر في ${new Date().toISOString().slice(0,10)}`,W/2,top+(logoOk?ls:0)+Math.round(52*scale));
+        y=top+(logoOk?ls:0)+Math.round(70*scale);
+      }else{ y=H*0.04; }
+      ctx.strokeStyle="#DADADA"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(L,y); ctx.lineTo(R,y); ctx.stroke(); y+=Math.round(18*scale);
+      ctx.direction="rtl"; ctx.textAlign="right"; ctx.fillStyle="#1a1a1a";
+    }
+    function finalizePage(){
+      ctx.direction="rtl"; ctx.textAlign="center"; ctx.fillStyle="#888"; ctx.font=`${Math.round(10*scale)}px ${FONT}`;
+      ctx.fillText(`مركز د. السيد الغمري لاستشارات وأمراض الدواجن — صفحة ${pages.length+1}`,W/2,H*0.975);
+      pages.push(canvas.toDataURL("image/jpeg",0.93));
+    }
+    const bottom=H*0.95;
+    function ensure(need){ if(y+need>bottom){ finalizePage(); newPage(false); } }
+    function line(text,{size=14,bold=false,gap=5,color="#1a1a1a",indent=0}={}){
+      ctx.direction="rtl"; ctx.textAlign="right"; ctx.font=`${bold?"bold ":""}${Math.round(size*scale)}px ${FONT}`; ctx.fillStyle=color;
+      const lh=Math.round((size+8)*scale); const maxW=CW-indent*scale;
+      const words=(text||"").split(/\s+/).filter(Boolean); let ln=""; const chunks=[];
+      words.forEach(w=>{ const t=ln?ln+" "+w:w; if(ctx.measureText(t).width>maxW&&ln){chunks.push(ln);ln=w;}else ln=t; });
+      if(ln) chunks.push(ln);
+      chunks.forEach(c=>{ ensure(lh); ctx.fillText(c,R-indent*scale,y); y+=lh; });
+      y+=Math.round(gap*scale);
+    }
+    function heading(t){ ensure(60*scale); y+=Math.round(6*scale); line(t,{size:18,bold:true,color:"#1c6b45",gap:4}); }
+    function interp(arr){
+      ensure(70*scale); y+=Math.round(8*scale);
+      line("📝 التفسير",{size:14,bold:true,color:"#1c6b45",gap:2});
+      arr.forEach(t=>line("• "+t,{size:13,color:"#333",gap:3,indent:6}));
+      y+=Math.round(8*scale);
+    }
+    function table(cols,rows){
+      const rh=Math.round(24*scale), fs=Math.round(11.5*scale);
+      const totalW=cols.reduce((s,c)=>s+c.w,0);
+      function drawRow(cells,header){
+        ensure(rh+4);
+        if(header){ ctx.fillStyle="#E4EEE9"; ctx.fillRect(L,y,CW,rh); }
+        let x=R; ctx.fillStyle="#1a1a1a"; ctx.font=`${header?"bold ":""}${fs}px ${FONT}`;
+        cols.forEach((c,i)=>{
+          const cw=CW*c.w/totalW; let t=String(cells[i]==null?"":cells[i]);
+          while(ctx.measureText(t).width>cw-10*scale && t.length>3) t=t.slice(0,-2);
+          if(t!==String(cells[i]==null?"":cells[i])) t=t.trim()+"…";
+          ctx.textAlign=i===0?"right":"center";
+          ctx.fillText(t,i===0?x-6*scale:x-cw/2,y+rh*0.68);
+          x-=cw;
+        });
+        ctx.strokeStyle="#E3E3E3"; ctx.beginPath(); ctx.moveTo(L,y+rh); ctx.lineTo(R,y+rh); ctx.stroke();
+        y+=rh;
+      }
+      drawRow(cols.map(c=>c.label),true);
+      rows.forEach(r=>drawRow(r,false));
+      y+=Math.round(10*scale);
+    }
+    function hbar(items,{valueLabel="دورة"}={}){
+      if(!items.length) return;
+      const rh=Math.round(26*scale), labW=CW*0.36, barArea=CW-labW-60*scale, max=Math.max(...items.map(i=>Math.max(i.v,i.v2||0)),1);
+      items.forEach(it=>{
+        ensure(rh+2);
+        ctx.textAlign="right"; ctx.fillStyle="#1a1a1a"; ctx.font=`${Math.round(11.5*scale)}px ${FONT}`;
+        let t=it.label; while(ctx.measureText(t).width>labW-8*scale&&t.length>3) t=t.slice(0,-2);
+        ctx.fillText(t===it.label?t:t.trim()+"…",R,y+rh*0.66);
+        const bw=Math.max(2,barArea*it.v/max), bx=R-labW-bw;
+        ctx.fillStyle="#1c6b45"; ctx.fillRect(bx,y+rh*0.18,bw,rh*0.52);
+        if(it.v2!=null&&it.v2>0){ const w2=Math.max(2,barArea*it.v2/max); ctx.fillStyle="rgba(194,65,12,.55)"; ctx.fillRect(R-labW-w2,y+rh*0.72,w2,rh*0.16); }
+        ctx.textAlign="right"; ctx.fillStyle="#333"; ctx.fillText(String(it.v),bx-6*scale,y+rh*0.62);
+        y+=rh;
+      });
+      y+=Math.round(6*scale);
+    }
+    function lineChart(points){
+      const ch=Math.round(230*scale); ensure(ch+50*scale);
+      const px=L+46*scale, pw=CW-58*scale, py=y+8*scale, ph=ch-44*scale;
+      const maxX=Math.max(...points.map(p=>p.age),7), maxY0=Math.max(...points.map(p=>p.avg),0.1); const maxY=Math.ceil(maxY0*1.15*10)/10||1;
+      ctx.strokeStyle="#E3E3E3"; ctx.lineWidth=1; ctx.fillStyle="#666"; ctx.font=`${Math.round(10*scale)}px ${FONT}`; ctx.textAlign="right";
+      for(let i=0;i<=4;i++){ const gy=py+ph-ph*i/4; ctx.beginPath(); ctx.moveTo(px,gy); ctx.lineTo(px+pw,gy); ctx.stroke(); ctx.fillText((maxY*i/4).toFixed(2)+"%",px-4*scale,gy+3*scale); }
+      ctx.textAlign="center";
+      const step=maxX>35?7:(maxX>20?5:2);
+      for(let a=0;a<=maxX;a+=step){ const gx=px+pw*a/maxX; ctx.fillText(String(a),gx,py+ph+16*scale); }
+      ctx.fillText("العمر (يوم)",px+pw/2,py+ph+34*scale);
+      const X=a=>px+pw*a/maxX, Y=v=>py+ph-ph*v/maxY;
+      ctx.strokeStyle="#1c6b45"; ctx.lineWidth=2*scale/1.5; ctx.beginPath();
+      points.forEach((p,i)=>{ const x=X(p.age),yy=Y(p.avg); if(i===0) ctx.moveTo(x,yy); else ctx.lineTo(x,yy); }); ctx.stroke();
+      const peak=points.reduce((a,b)=>b.avg>a.avg?b:a);
+      points.forEach(p=>{ ctx.fillStyle=p===peak?"#c0392b":"#1c6b45"; ctx.beginPath(); ctx.arc(X(p.age),Y(p.avg),(p===peak?5:3)*scale/1.5,0,Math.PI*2); ctx.fill(); });
+      ctx.fillStyle="#c0392b"; ctx.font=`bold ${Math.round(10.5*scale)}px ${FONT}`; ctx.textAlign="center";
+      ctx.fillText(`ذروة: ${peak.avg.toFixed(2)}% (يوم ${peak.age})`,Math.min(Math.max(X(peak.age),px+60*scale),px+pw-60*scale),Math.max(py+10*scale,Y(peak.avg)-8*scale));
+      ctx.textAlign="right"; y+=ch;
+    }
+
+    newPage(true);
+    // ملخص
+    const kp=[["الزيارات",S.visits.length],["العملاء",S.clients],["الدورات",S.flocks],["دورات بتشخيص مؤكد",S.flocksWithDx]];
+    const bw=(CW-30*scale)/4, bh=Math.round(58*scale); ensure(bh+10*scale);
+    kp.forEach((k,i)=>{ const bx=R-(i+1)*bw-i*10*scale;
+      ctx.fillStyle="#F3F8F5"; ctx.fillRect(bx,y,bw,bh); ctx.strokeStyle="#D6E4DC"; ctx.strokeRect(bx,y,bw,bh);
+      ctx.textAlign="center"; ctx.fillStyle="#1c6b45"; ctx.font=`bold ${Math.round(20*scale)}px ${FONT}`; ctx.fillText(String(k[1]),bx+bw/2,y+bh*0.5);
+      ctx.fillStyle="#555"; ctx.font=`${Math.round(10.5*scale)}px ${FONT}`; ctx.fillText(k[0],bx+bw/2,y+bh*0.85); });
+    y+=bh+Math.round(24*scale); ctx.textAlign="right";
+
+    // 1) الأمراض
+    heading("١) تكرار الأمراض (دورات بتشخيص مؤكد)");
+    const dTop=S.dxRows.filter(r=>r.flocks>0||r.suspected>0).slice(0,10);
+    if(dTop.length){
+      hbar(dTop.map(r=>({label:r.label,v:r.flocks,v2:r.suspected})));
+      line("الأخضر = دورات بتشخيص مؤكد · البرتقالي الرفيع = مرات الترجيح الأول",{size:10.5,color:"#888",gap:6});
+      table([{label:"المرض",w:3.2},{label:"دورات (مؤكد)",w:1.3},{label:"زيارات (مؤكد)",w:1.3},{label:"ترجيح أول",w:1.1}],
+        dTop.map(r=>[r.label,r.flocks,r.visits,r.suspected]));
+    }
+    interp(stInterpDiseases(S));
+
+    // 2) النفوق
+    heading("٢) منحنى متوسط النفوق اليومي حسب العمر");
+    if(S.curve.length) lineChart(S.curve); else line("لا توجد بيانات نفوق مسجّلة.",{color:"#888"});
+    interp(stInterpMortality(S));
+
+    // 3) الأدوية
+    heading("٣) فعالية الأدوية (من استجابات المتابعة)");
+    if(S.drugs.length){
+      table([{label:"الدواء",w:2.4},{label:"المرض",w:2.2},{label:"حالات",w:0.8},{label:"ممتاز/جيد",w:1.0},{label:"جزئي",w:0.8},{label:"ضعيف/فشل",w:1.1},{label:"نجاح %",w:0.9}],
+        S.drugs.slice(0,12).map(d=>[d.drug,d.disease,d.total,d.excellent+d.good,d.partial,d.weak+d.failed,d.success+"%"]));
+    }
+    interp(stInterpDrugs(S));
+
+    // 4) المناطق
+    heading("٤) الأمراض حسب المنطقة");
+    const RR=S.regions.filter(r=>r.list.length).slice(0,8);
+    if(RR.length){
+      table([{label:"المنطقة",w:1.8},{label:"دورات",w:0.8},{label:"أكتر مرض",w:2.2},{label:"%",w:0.7},{label:"ثاني مرض",w:2.2}],
+        RR.map(r=>[r.label,r.nFlocks,r.list[0].label,Math.round(r.list[0].pct*100)+"%",r.list[1]?r.list[1].label:"—"]));
+    }
+    interp(stInterpRegions(S));
+
+    line("هذا التقرير إرشادي ومبني على البيانات المسجّلة في البرنامج، والقرار العلاجي والوقائي النهائي للطبيب المعالج.",{size:11,color:"#888",gap:2});
+    finalizePage();
+    const pdf=new jspdf.jsPDF({unit:"mm",format:"a4"});
+    pages.forEach((d,i)=>{ if(i>0) pdf.addPage(); pdf.addImage(d,"JPEG",0,0,210,297); });
+    pdf.save("تقرير-إحصائي-شامل-"+new Date().toISOString().slice(0,10)+".pdf");
+  }catch(e){
+    alert("⚠ تعذّر توليد التقرير: "+(e.message||e));
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=old; }
+  }
+}
 function exportAllStatsExcel(){
   if(!STATE.visits.length){alert("لا توجد زيارات مسجّلة بعد.");return;}
   const RESP_LABEL=RESP_LABEL_FULL;
@@ -5768,9 +6031,10 @@ function epiVisitDx(v){
   return [];
 }
 // يجمع: منطقة ← دورة (Flock) ← تشخيصات مؤكدة. الوحدة = "دورة فيها المرض" (مش عدد الزيارات)
-function epiCollect(){
-  const {from,to}=epiDateRange();
-  const speciesSel=document.getElementById("epi_species").value;
+function epiCollect(opts){
+  let from,to,speciesSel;
+  if(opts){ from=opts.from||null; to=opts.to||null; speciesSel=opts.species||""; }
+  else{ ({from,to}=epiDateRange()); speciesSel=document.getElementById("epi_species").value; }
   const flockMap=new Map(STATE.flocks.map(f=>[f.id,f]));
   const regions=new Map();
   const missing=new Map(); // flockId -> flock (بدون منطقة)
