@@ -4370,11 +4370,21 @@ function shareClientWhatsApp(){
 /* ---------------------- منطق مطابقة الدورة (استمرارية الزيارات) ---------------------- */
 function daysBetween(d1,d2){ return Math.round((new Date(d2)-new Date(d1))/864e5); }
 
+// توحيد اسم العنبر للمقارنة: "عنبر 1" = "العنبر ١" = "1" (أرقام عربية/هندية، همزات، تاء مربوطة، مسافات)
+function normHouseName(s){
+  return String(s||"").toLowerCase()
+    .replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d))
+    .replace(/[۰-۹]/g,d=>"۰۱۲۳۴۵۶۷۸۹".indexOf(d))
+    .replace(/[أإآ]/g,"ا").replace(/ة/g,"ه").replace(/[يى]/g,"ي")
+    .replace(/[\u064B-\u0652\u0640]/g,"")
+    .replace(/(ال)?عنبر/g," ").replace(/house|shed/g," ")
+    .replace(/[\s\-_.،,:()]+/g,"");
+}
 function findMatchingFlock(clientId, houseName, dateStr, ageDays, birdCount){
   const client=STATE.clients.find(c=>c.id===clientId);
   if(!client||!dateStr) return {match:null,reason:"missing"};
   const candidates=STATE.flocks.filter(f=>f.clientId===clientId&&f.status==="open"&&
-    (!houseName || !f.houseName || f.houseName.trim()===houseName.trim()));
+    (!houseName || !f.houseName || f.houseName.trim()===houseName.trim() || (normHouseName(f.houseName)&&normHouseName(f.houseName)===normHouseName(houseName))));
   if(!candidates.length) return {match:null,reason:"none"};
 
   let best=null, bestScore=-Infinity, warnings=[];
@@ -4838,8 +4848,12 @@ function checkFlockMatch(){
       const implied=new Date(new Date(date).getTime()-(age-1)*864e5).toISOString().slice(0,10);
       document.getElementById("nf_placement").value=implied;
     }
+    const otherOpen=STATE.flocks.filter(f=>f.clientId===clientId&&f.status==="open"&&f.houseName&&normHouseName(f.houseName)!==normHouseName(house));
+    const otherHtml=(house&&otherOpen.length)?`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #c9a86a"><b>⚠ العميل عنده دورات مفتوحة بأسماء عنابر مختلفة.</b> لو العنبر ده هو نفسه واحد منهم (اختلاف في كتابة الاسم) اختاره بدل ما تتكوّن دورة مكررة:
+      <div class="row" style="margin-top:4px;flex-wrap:wrap;gap:6px">${otherOpen.map(f=>`<button type="button" class="btn sm" onclick="pickExistingFlock('${f.id}')">🔗 ${epiEsc(f.houseName)} (${epiEsc(f.flockCode||"")} — تحميل ${epiEsc(f.placementDate||"")})</button>`).join("")}</div>
+      <div class="small" style="color:#777;margin-top:4px">لو عنبر مختلف فعلًا سيب الاسم زي ما هو وهتتكوّن دورة جديدة بالاسم «${epiEsc(house)}».</div></div>`:"";
     banner.innerHTML=`<div class="banner new">🆕 لا توجد دورة مفتوحة مطابقة لهذا العنبر ضمن نافذة الدورة الحالية — سيتم إنشاء <b>دورة جديدة</b>.
-      ${warnings.length?'<br><span class="small">ملاحظة: '+warnings.join(' · ')+'</span>':''}</div>`;
+      ${warnings.length?'<br><span class="small">ملاحظة: '+warnings.join(' · ')+'</span>':''}${otherHtml}</div>`;
     updateProdVisibility();
   }
   refreshBreedTarget();
