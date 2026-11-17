@@ -4893,10 +4893,11 @@ function checkFlockMatch(){
   populateConfirmedDiagnosisSelect();
 }
 function medStatChanged(idx){
-  const st=document.getElementById("medstat_"+idx).value;
+  const used=document.getElementById("medused_"+idx).checked;
   const sub=document.getElementById("medsub_"+idx), rs=document.getElementById("medresp_"+idx), cf=document.getElementById("medconf_"+idx);
-  if(sub) sub.style.display=st==="substituted"?"block":"none";
-  if(rs) rs.disabled=(st==="not_used"); if(cf) cf.disabled=(st==="not_used");
+  if(sub) sub.style.display=used?"none":"block";
+  const dead=!used && !(sub&&sub.value.trim());
+  if(rs) rs.disabled=dead; if(cf) cf.disabled=dead;
 }
 function renderPendingMedResponses(flockId){
   const host=document.getElementById("pendingMedResponses");
@@ -4913,12 +4914,8 @@ function renderPendingMedResponses(flockId){
     <b>💊 تقييم استجابة العلاج الموصوف في زيارة ${prevVisit.date}:</b>
     ${pending.map(({m,idx})=>`<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">
       <span class="small">${formatMedShort(m)}${m.response?' — آخر تقييم: '+(RESP_LABEL_FULL[m.response]||m.response)+(m.responseConfirmed?' (مؤكَّد ميدانيًا)':' (تليفوني/مبدئي — محتاج تأكيد)'):''}</span>
-      <select id="medstat_${idx}" onchange="medStatChanged(${idx})" title="حالة الدواء">
-        <option value="used"${(!m.status||m.status==='used')?' selected':''}>✔ اتستخدم</option>
-        <option value="not_used"${m.status==='not_used'?' selected':''}>❌ لم يُستخدم / اتلغى (مش موجود)</option>
-        <option value="substituted"${m.status==='substituted'?' selected':''}>🔁 اتغيّر ببديل</option>
-      </select>
-      <input type="text" id="medsub_${idx}" placeholder="اسم الدواء البديل" value="${(m.substitute||'').replace(/"/g,'&quot;')}" style="display:${m.status==='substituted'?'block':'none'};min-width:150px">
+      <label class="small"><input type="checkbox" id="medused_${idx}" onchange="medStatChanged(${idx})"${(m.status==='not_used'||m.status==='substituted')?'':' checked'}> ✔ اتستخدم</label>
+      <input type="text" id="medsub_${idx}" placeholder="اتلغى؟ اكتب اسم البديل لو اتصرف (وسيبه فاضي لو مفيش)" value="${(m.substitute||'').replace(/"/g,'&quot;')}" oninput="medStatChanged(${idx})" style="display:${(m.status==='not_used'||m.status==='substituted')?'block':'none'};min-width:200px">
       <select id="medresp_${idx}" data-arridx="${idx}">
         <option value="">${m.response?'بدون تغيير':'لم يُقيَّم بعد'}</option>
         <option value="excellent"${m.response==='excellent'?' selected':''}>استجابة ممتازة</option>
@@ -6764,9 +6761,9 @@ async function saveVisitInner(clientId,date){
         const sel=document.getElementById("medresp_"+idx);
         if(!sel) return m;
         const conf=document.getElementById("medconf_"+idx);
-        const stSel=document.getElementById("medstat_"+idx), subIn=document.getElementById("medsub_"+idx);
-        const status=stSel?stSel.value:(m.status||"used");
-        const substitute=(subIn?subIn.value.trim():(m.substitute||""));
+        const usedCb=document.getElementById("medused_"+idx), subIn=document.getElementById("medsub_"+idx);
+        const substitute=(subIn&&usedCb&&!usedCb.checked)?subIn.value.trim():"";
+        const status=(!usedCb||usedCb.checked)?"used":(substitute?"substituted":"not_used");
         if(status==="not_used") return {...m, status, substitute:"", response:"", responseConfirmed:false};
         const newResponse=sel.value||m.response||"";
         const newConfirmed=conf?conf.checked:!!m.responseConfirmed;
