@@ -3599,7 +3599,21 @@ function confirmedDxLabels(v){
   return "";
 }
 /* عرض مختصر لدواء واحد (اسم + جرعة + عبوة + المرض المرتبط لو موجود) — مستخدم في كارت الزيارة والإكسيل وبانر متابعة الاستجابة */
+/* حالة الدواء في المتابعة: used (افتراضي) | not_used (العميل مالقاهوش/اتلغى) | substituted (اتغيّر ببديل) */
+function effMed(m){
+  if(!m) return null;
+  if(m.status==="not_used") return null;
+  if(m.status==="substituted" && (m.substitute||"").trim()){
+    const nm=m.substitute.trim(); const hit=(typeof PACK_CATALOG!=="undefined"&&PACK_CATALOG[nm.toLowerCase()])||null;
+    return {...m, drug:nm, pack:(hit&&hit.pack)||"", originalDrug:m.drug, status:"used"};
+  }
+  return m;
+}
 function formatMedShort(m, waterEstimateL){
+  if(m && m.status==="not_used") return (m.drug||"")+' — ❌ لم يُستخدم'+(m.statusNote?' ('+m.statusNote+')':'');
+  if(m && m.status==="substituted" && (m.substitute||"").trim()){
+    const e=effMed(m); return formatMedShort(e, waterEstimateL)+' (بديل عن '+m.drug+')';
+  }
   const diseaseLabel=m.diseaseCustom||(m.diseaseId?dxName(m.diseaseId):"");
   let s=m.drug;
   const dose=formatMedDose(m);
@@ -4054,6 +4068,7 @@ function stCollect(){
   // الأدوية
   const dm={};
   visits.forEach(v=>(v.medications||[]).forEach(m=>{
+    m=effMed(m); if(!m) return;
     if(!m.response||!m.drug) return;
     const eff=m.diseaseId||v.confirmedDiagnosisId||"";
     const k=m.drug.trim().toLowerCase()+"|"+eff;
@@ -4323,6 +4338,7 @@ function exportAllStatsExcel(){
   // 3) فعالية الأدوية (لكل دواء × مرض، من كل الزيارات المؤكَّدة الاستجابة)
   const drugMap={};
   STATE.visits.forEach(v=>(v.medications||[]).forEach(m=>{
+    m=effMed(m); if(!m) return;
     if(!m.response||!m.drug)return;
     const effDisease=m.diseaseId||v.confirmedDiagnosisId||"";
     const key=(m.drug||"").trim().toLowerCase()+"|"+effDisease;
@@ -4642,7 +4658,7 @@ function flockNeedsFollowUp(flockId){
   const flockVisits=STATE.visits.filter(v=>v.flockId===flockId).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const last=flockVisits[0];
   if(!last) return false;
-  return (last.medications||[]).some(m=>!m.response || !m.responseConfirmed);
+  return (last.medications||[]).some(m=>m.status!=="not_used" && (!m.response || !m.responseConfirmed));
 }
 function normHouseName(h){ return (h||"").trim().replace(/\s+/g," "); }
 // كل أسماء العنابر (مفتوحة ومقفولة) اللي استُخدمت قبل كده لهذا العميل — نقترحها عشان الطبيب يكتب نفس الاسم بالظبط كل مرة
@@ -4876,21 +4892,33 @@ function checkFlockMatch(){
   applyTreatmentHistoryDefaults();
   populateConfirmedDiagnosisSelect();
 }
+function medStatChanged(idx){
+  const st=document.getElementById("medstat_"+idx).value;
+  const sub=document.getElementById("medsub_"+idx), rs=document.getElementById("medresp_"+idx), cf=document.getElementById("medconf_"+idx);
+  if(sub) sub.style.display=st==="substituted"?"block":"none";
+  if(rs) rs.disabled=(st==="not_used"); if(cf) cf.disabled=(st==="not_used");
+}
 function renderPendingMedResponses(flockId){
   const host=document.getElementById("pendingMedResponses");
   if(editingVisitId){ host.innerHTML=""; return; }
-  const flockVisits=STATE.visits.filter(v=>v.flockId===flockId && (v.medications||[]).some(m=>!m.response || !m.responseConfirmed))
+  const flockVisits=STATE.visits.filter(v=>v.flockId===flockId && (v.medications||[]).some(m=>m.status!=="not_used" && (!m.response || !m.responseConfirmed)))
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const prevVisit=flockVisits[0];
   if(!prevVisit){ host.innerHTML=""; return; }
   const meds=prevVisit.medications||[];
-  const pending=meds.map((m,idx)=>({m,idx})).filter(({m})=>!m.response || !m.responseConfirmed);
+  const pending=meds.map((m,idx)=>({m,idx})).filter(({m})=>m.status!=="not_used" && (!m.response || !m.responseConfirmed));
   if(!pending.length){ host.innerHTML=""; return; }
   window.__pendingMedVisitId=prevVisit.id;
   host.innerHTML=`<div class="banner warn">
     <b>💊 تقييم استجابة العلاج الموصوف في زيارة ${prevVisit.date}:</b>
     ${pending.map(({m,idx})=>`<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">
       <span class="small">${formatMedShort(m)}${m.response?' — آخر تقييم: '+(RESP_LABEL_FULL[m.response]||m.response)+(m.responseConfirmed?' (مؤكَّد ميدانيًا)':' (تليفوني/مبدئي — محتاج تأكيد)'):''}</span>
+      <select id="medstat_${idx}" onchange="medStatChanged(${idx})" title="حالة الدواء">
+        <option value="used"${(!m.status||m.status==='used')?' selected':''}>✔ اتستخدم</option>
+        <option value="not_used"${m.status==='not_used'?' selected':''}>❌ لم يُستخدم / اتلغى (مش موجود)</option>
+        <option value="substituted"${m.status==='substituted'?' selected':''}>🔁 اتغيّر ببديل</option>
+      </select>
+      <input type="text" id="medsub_${idx}" placeholder="اسم الدواء البديل" value="${(m.substitute||'').replace(/"/g,'&quot;')}" style="display:${m.status==='substituted'?'block':'none'};min-width:150px">
       <select id="medresp_${idx}" data-arridx="${idx}">
         <option value="">${m.response?'بدون تغيير':'لم يُقيَّم بعد'}</option>
         <option value="excellent"${m.response==='excellent'?' selected':''}>استجابة ممتازة</option>
@@ -5255,6 +5283,7 @@ function computeMonthlyConsumption(drugName, yearMonth){
     const parts=v.date.split("-");
     if(parts[0]!==y || parts[1]!==mo) return;
     (v.medications||[]).forEach(m=>{
+      m=effMed(m); if(!m) return;
       if((m.drug||"").trim().toLowerCase()!==key) return;
       const client=STATE.clients.find(c=>c.id===v.clientId);
       entries.push({date:v.date, clientName:client?client.name:"—", doseRaw:m.dose||"", packRaw:m.pack||"", comboType:m.comboType||"", calc:computeMedicationNeed(m, v.waterEstimateL)});
@@ -5273,6 +5302,7 @@ function computeAllDrugsMonthlyConsumption(yearMonth){
     const parts=v.date.split("-");
     if(parts[0]!==y || parts[1]!==mo) return;
     (v.medications||[]).forEach(m=>{
+      m=effMed(m); if(!m) return;
       const name=(m.drug||"").trim();
       if(!name) return;
       const key=name.toLowerCase();
@@ -5834,6 +5864,7 @@ function getDrugResponseStats(diseaseId,drugName){
   let excellent=0,good=0,partial=0,weak=0,failed=0,total=0;
   STATE.visits.forEach(v=>{
     (v.medications||[]).forEach(m=>{
+      m=effMed(m); if(!m) return;
       const effectiveDiseaseId=m.diseaseId||v.confirmedDiagnosisId||null;
       if(effectiveDiseaseId===diseaseId && norm(m.drug)===target && m.response){
         total++;
@@ -6733,9 +6764,13 @@ async function saveVisitInner(clientId,date){
         const sel=document.getElementById("medresp_"+idx);
         if(!sel) return m;
         const conf=document.getElementById("medconf_"+idx);
+        const stSel=document.getElementById("medstat_"+idx), subIn=document.getElementById("medsub_"+idx);
+        const status=stSel?stSel.value:(m.status||"used");
+        const substitute=(subIn?subIn.value.trim():(m.substitute||""));
+        if(status==="not_used") return {...m, status, substitute:"", response:"", responseConfirmed:false};
         const newResponse=sel.value||m.response||"";
         const newConfirmed=conf?conf.checked:!!m.responseConfirmed;
-        return {...m, response:newResponse, responseConfirmed:newConfirmed};
+        return {...m, status:(status==="substituted"&&!substitute)?"used":status, substitute:status==="substituted"?substitute:"", response:newResponse, responseConfirmed:newConfirmed};
       });
       await fs.collection("visits").doc(prevVisit.id).update({medications:updated});
     }
