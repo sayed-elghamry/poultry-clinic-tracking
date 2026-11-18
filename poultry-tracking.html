@@ -2885,6 +2885,48 @@ auth.onAuthStateChanged(user=>{
 });
 
 /* ---------------------- مستمعو Firestore (تزامن فوري بين الأجهزة) ---------------------- */
+/* ---------------------- الإغلاق التلقائي للدورات المنسية (تسمين / ساسو / بلدي) ---------------------- */
+const AUTO_CLOSE_GRACE_DAYS=5;   // بعد مدة الدورة المعتادة (CYCLE_DAYS) بكام يوم نقفل: تسمين 45+5=50، ساسو 68+5=73، بلدي 90+5=95
+const AUTO_CLOSE_QUIET_DAYS=7;   // ما نقفلش لو فيه زيارة خلال آخر 7 أيام (يعني الدورة لسه شغالة/متأخرة في التسويق)
+let __acFlocksServer=false, __acVisitsServer=false, __acDone=false;
+function autoCloseCandidates(){
+  const today=new Date().toISOString().slice(0,10);
+  return STATE.flocks.filter(f=>{
+    if(f.status!=="open"||f.autoCloseDisabled||!f.placementDate) return false;
+    const cd=CYCLE_DAYS[f.birdType]; if(!cd) return false;
+    const limit=cd+AUTO_CLOSE_GRACE_DAYS;
+    if(daysBetween(f.placementDate,today)+1<=limit) return false;
+    const last=STATE.visits.filter(v=>v.flockId===f.id&&v.date).map(v=>v.date).sort().pop();
+    if(last && daysBetween(last,today)<AUTO_CLOSE_QUIET_DAYS) return false;
+    return true;
+  });
+}
+async function autoCloseStaleFlocks(){
+  if(__acDone||!__acFlocksServer||!__acVisitsServer) return;   // ننتظر بيانات السيرفر الحقيقية (مش الكاش) قبل أي قفل
+  __acDone=true;
+  const list=autoCloseCandidates(); if(!list.length) return;
+  try{
+    const batch=fs.batch(); const nowIso=new Date().toISOString();
+    list.forEach(f=>{
+      const limit=CYCLE_DAYS[f.birdType]+AUTO_CLOSE_GRACE_DAYS;
+      const closedAt=new Date(new Date(f.placementDate).getTime()+(limit-1)*864e5).toISOString();
+      batch.update(fs.collection("flocks").doc(f.id),{status:"closed",closedAt,autoClosed:true,autoClosedAt:nowIso});
+    });
+    await batch.commit();
+  }catch(e){ __acDone=false; console.warn("auto close failed",e); alert("⚠ تعذّر الإغلاق التلقائي للدورات المنسية: "+(e.message||e)); }
+}
+async function reopenFlock(flockId){
+  if(!confirm("إعادة فتح الدورة؟ مش هتتقفل تلقائيًا تاني (تقدر تقفلها يدويًا وقت التسويق)."))return;
+  try{ await fs.collection("flocks").doc(flockId).update({status:"open",closedAt:null,autoClosed:false,autoCloseDisabled:true}); }
+  catch(e){ alert("⚠ تعذّرت إعادة الفتح: "+(e.message||e)); }
+}
+async function addClosureData(flockId){
+  const feedStr=prompt("إجمالي العلف المستهلك طوال الدورة (كجم) — لحساب الـ FCR:"); if(!feedStr) return;
+  const feed=parseFloat(feedStr); if(isNaN(feed)||feed<=0){ alert("رقم غير صالح."); return; }
+  const wStr=prompt("متوسط وزن الطائر عند التسويق (جم):"); const w=wStr?parseFloat(wStr):null;
+  try{ await fs.collection("flocks").doc(flockId).update({actualTotalFeedKg:feed,actualAvgWeightG:(w&&!isNaN(w))?w:null}); alert("✅ اتحفظت بيانات الإغلاق. تقدر دلوقتي تولّد تقرير الدورة."); }
+  catch(e){ alert("⚠ تعذّر الحفظ: "+(e.message||e)); }
+}
 function startListeners(){
   fs.collection("clients").onSnapshot(snap=>{
     STATE.clients = snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -2893,16 +2935,20 @@ function startListeners(){
   });
   fs.collection("flocks").onSnapshot(snap=>{
     STATE.flocks = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!snap.metadata.fromCache) __acFlocksServer=true;
     renderOpenFlocks(); renderDashboard();
     if(currentClientDetailId) renderClientDetail(currentClientDetailId);
     renderClientOpenFlocks();
+    autoCloseStaleFlocks();
   });
   fs.collection("visits").orderBy("date","desc").onSnapshot(snap=>{
     STATE.visits = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!snap.metadata.fromCache) __acVisitsServer=true;
     renderDashboard();
     if(currentClientDetailId) renderClientDetail(currentClientDetailId);
     buildDrugIndex();
     buildVaccIndex();
+    autoCloseStaleFlocks();
   });
   fs.collection("packCatalog").onSnapshot(snap=>{
     const idx={};
@@ -2981,6 +3027,10 @@ function renderDashboard(){
       <b>${a.client?a.client.name:'—'}</b> — ${a.f.houseName||'—'} (${a.f.flockCode}) — اليوم ${a.dayOfCycle}
       <div class="row"><button class="btn sm" onclick="openClientDetail('${a.f.clientId}')">فتح ملف العميل</button></div>
     </div>`).join("") : '<p class="hint">لا توجد تنبيهات حاليًا 👍</p>';
+  {
+    const recentAuto=STATE.flocks.filter(f=>f.autoClosed&&f.status==="closed"&&f.autoClosedAt&&(Date.now()-new Date(f.autoClosedAt).getTime())<5*864e5);
+    if(recentAuto.length) hostA.innerHTML='<div class="banner warn"><b>🔒 دورات اتقفلت تلقائيًا (من غير زيارة خلال مدة التربية):</b>'+recentAuto.map(f=>{const cl=STATE.clients.find(c=>c.id===f.clientId);return '<div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><span class="small">'+(cl?cl.name:"—")+' — '+(f.houseName||"—")+' ('+(f.flockCode||"")+') — تحميل '+f.placementDate+'</span><button class="btn sm" onclick="reopenFlock(\''+f.id+'\')">↩ إعادة فتح</button><button class="btn sm" onclick="openClientDetail(\''+f.clientId+'\')">فتح الملف</button></div>';}).join("")+'<div class="small" style="color:#777;margin-top:6px">اتقفلت بدون FCR — تقدر تضيف العلف والوزن من ملف العميل.</div></div>'+hostA.innerHTML;
+  }
 
   const followups=STATE.visits.filter(v=>{
     if(!v.nextVisitDate) return false;
@@ -3397,12 +3447,14 @@ function renderClientDetail(id){
     return `<div class="flockitem">
       <div class="ci-t">${f.houseName||'—'} <span class="small">(${f.flockCode})</span>
         <span class="chip ${f.status==='open'?'open':'closed'}">${f.status==='open'?'مفتوح':'مغلق'}</span>
+        ${f.autoClosed&&f.status==='closed'?'<span class="chip warn">🔒 أُغلقت تلقائيًا</span>':''}
         ${f.status==='open'&&flockNeedsFollowUp(f.id)?'<span class="chip" style="background:#fff3d6;color:#8a6d1a;border:1px solid #c98a1c">🔄 متابعة — محتاج إكمال بروتوكول العلاج</span>':''}</div>
       <div class="ci-s">${BIRD_LABEL[f.birdType]||f.birdType} · تحميل: ${f.placementDate} · ${cycleTxt} · عدد ابتدائي: ${f.birdCountInitial||'—'}${f.region?' · 📍 '+f.region:''}</div>
       <div class="row" style="margin-top:6px">
         ${f.status==='open'?`<button class="btn sm danger" onclick="closeFlock('${f.id}')">إغلاق الدورة (تسويق)</button>`:`<button class="btn sm pri" onclick="generateCycleReportPDF('${f.id}')">📄 ${f.cycleReportUrl?'إعادة توليد التقرير':'توليد تقرير الدورة الشامل'}</button>`}
         ${f.status==='closed'&&f.cycleReportUrl?`<a class="btn sm" href="${f.cycleReportUrl}" target="_blank">🔗 عرض تقرير الدورة المحفوظ${f.fcrActual!=null?' (FCR '+f.fcrActual.toFixed(2)+')':''}</a>`:''}
         ${(f.notebookLink||c.notebookLink)?`<button class="btn sm" onclick="openFlockNotebook('${f.id}')">📒 كراسة ${f.notebookLink?'الدورة':'المزرعة'}</button>`:''}
+        ${f.autoClosed&&f.status==='closed'?`<button class="btn sm" onclick="addClosureData('${f.id}')">⚖️ إضافة علف/وزن للـFCR</button><button class="btn sm" onclick="reopenFlock('${f.id}')">↩ إعادة فتح</button>`:''}
         <button class="btn sm" onclick="startEditFlock('${f.id}')">✏️ تعديل الدورة</button>
         <button class="btn sm danger" onclick="deleteFlock('${f.id}')">🗑 حذف الدورة</button>
         <button class="btn sm" onclick="exportFlockExcel('${f.id}')">📊 تصدير Excel</button>
