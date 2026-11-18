@@ -3313,6 +3313,19 @@ function houseWeeklyMort(f){
   Object.keys(byDate).forEach(d=>{ const age=daysBetween(f.placementDate,d)+1; if(age<1) return; const w=Math.ceil(age/7); wk[w]=(wk[w]||0)+byDate[d]/init*100; any=true; });
   return any?wk:null;
 }
+/* شكوى نفوق من نص الشكوى (لما سجل النفوق ما اتكتبش): "رفع النافق في العنبر..." ويتجاهل النفي مثل "مفيش نافق" */
+function complaintMentionsMortality(txt){
+  if(!txt) return false;
+  return String(txt).split(/[،,.\n؛;!؟?]+/).some(seg=>/(نافق|نفوق|نوافق|وفيات|وفاة|موت|ميت|يموت|بيموت|بتموت)/.test(seg) && !/(مفيش|مافيش|ما فيش|لا يوجد|لا توجد|بدون|طبيعي|عادي|قليل)/.test(seg));
+}
+function houseMortSignals(f){
+  const vs=STATE.visits.filter(v=>v.flockId===f.id&&v.ageDays!=null&&!isNaN(parseInt(v.ageDays)));
+  const wkC={}, wkD={};
+  vs.forEach(v=>{ const w=Math.max(1,Math.ceil(parseInt(v.ageDays)/7));
+    if(complaintMentionsMortality(v.complaint)) wkC[w]=(wkC[w]||0)+1;
+    const d=parseFloat(v.mortalityDaily); if(!isNaN(d)&&d>0) wkD[w]=Math.max(wkD[w]||0,d); });
+  return {complaintWeeks:wkC, dailyWeeks:wkD};
+}
 function renderHouseAnalysis(id){
   const box=document.getElementById("cd_house"); if(!box) return;
   const groups=houseGroups(id);
@@ -3344,8 +3357,25 @@ function renderHouseAnalysis(id){
       avgW.map((v,i)=>'<div style="display:flex;align-items:center;gap:6px;font-size:12.5px"><span style="width:62px">أسبوع '+(i+1)+'</span><div style="flex:1;background:#eee;border-radius:4px;height:10px"><div style="width:'+Math.round(v/mx*100)+'%;background:'+(v===mx?"#c0392b":"#1d6b3f")+';height:10px;border-radius:4px"></div></div><b style="width:46px;text-align:left">'+v.toFixed(2)+'</b></div>').join("")+'</div>';
     const peaks={}; wkAll.forEach(w=>{ let bw=null,bv=-1; Object.keys(w).forEach(k=>{ if(w[k]>bv){bv=w[k];bw=+k;} }); if(bw!=null) peaks[bw]=(peaks[bw]||0)+1; });
     const top=Object.entries(peaks).sort((a,b)=>b[1]-a[1])[0];
-    if(top&&top[1]>=2) notes.push("ذروة النفوق بتتكرر في الأسبوع "+top[0]+" ("+top[1]+" من "+wkAll.length+" دورات) — ركّز مراجعتك على العمر ده في العنبر (تدفئة/تهوية/تحصين/كوكسيديا حسب العمر).");
-  } else wkHtml='<p class="hint">سجل النفوق بالزيارات ناقص — مفيش تحليل لأعمار الذروة.</p>';
+    if(top&&top[1]>=2) notes.push("ذروة النفوق بتتكرر في الأسبوع "+top[0]+" ("+top[1]+" من "+wkAll.length+" دورات بسجل نفوق) — ركّز مراجعتك على العمر ده في العنبر (تدفئة/تهوية/تحصين/كوكسيديا حسب العمر).");
+  } else wkHtml='<p class="hint">سجل النفوق بالزيارات ناقص — مفيش رسم لأعمار الذروة.</p>';
+  // دورات بدون سجل نفوق: نعتمد على "النفوق اليومي %" المسجّل بالزيارة، ثم على نص الشكوى
+  const noLog=flocks.filter(f=>!houseWeeklyMort(f));
+  if(noLog.length){
+    const wkCount={}, rowsTxt=[];
+    noLog.forEach(f=>{
+      const sg=houseMortSignals(f); const ws=new Set(Object.keys(sg.complaintWeeks).map(Number));
+      let src="";
+      if(Object.keys(sg.dailyWeeks).length){ const m=Math.max(...Object.values(sg.dailyWeeks)); Object.keys(sg.dailyWeeks).forEach(w=>{ if(sg.dailyWeeks[w]===m) ws.add(+w); }); src="نفوق يومي مسجّل"+(Object.keys(sg.complaintWeeks).length?" + شكوى":""); }
+      else if(ws.size) src="شكوى نفوق";
+      if(ws.size){ [...ws].forEach(w=>wkCount[w]=(wkCount[w]||0)+1); rowsTxt.push((f.placementDate||"—")+": أسبوع "+[...ws].sort((a,b)=>a-b).join("، ")+" ("+src+")"); }
+    });
+    if(rowsTxt.length){
+      wkHtml+='<div style="margin-top:10px;padding:8px;background:#fff8e6;border:1px solid #e6cf8c;border-radius:8px"><b class="small">📣 دورات من غير سجل نفوق ('+noLog.length+') — اتحسبت من النفوق اليومي المسجّل أو من نص الشكوى:</b><ul style="margin:4px 18px 0 0;line-height:1.8">'+rowsTxt.map(r=>'<li class="small">'+e(r)+'</li>').join("")+'</ul></div>';
+      const topC=Object.entries(wkCount).sort((a,b)=>b[1]-a[1])[0];
+      if(topC&&topC[1]>=2) notes.push("حسب النفوق اليومي/شكاوى العميل (في دورات ما اتسجلش فيها النافق): ارتفاع النفوق اتكرر في الأسبوع "+topC[0]+" ("+topC[1]+" دورات) — تقدير تقريبي، سجّل النافق بالأرقام عشان يبقى أدق.");
+    }
+  }
   // 3) أمراض متكررة بأعمارها
   const dxMap={};
   visits.forEach(v=>{
