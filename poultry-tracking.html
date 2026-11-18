@@ -2975,6 +2975,13 @@ function startListeners(){
     buildVaccIndex();
     autoCloseStaleFlocks();
   });
+  /* مستمعان خفيفان بس لتأكيد وصول نسخة السيرفر الحقيقية (بدون includeMetadataChanges مش بيتبعت حدث لو الداتا زي الكاش) */
+  fs.collection("flocks").onSnapshot({includeMetadataChanges:true},snap=>{
+    if(!snap.metadata.fromCache && !__acFlocksServer){ __acFlocksServer=true; autoCloseStaleFlocks(); }
+  });
+  fs.collection("visits").onSnapshot({includeMetadataChanges:true},snap=>{
+    if(!snap.metadata.fromCache && !__acVisitsServer){ __acVisitsServer=true; autoCloseStaleFlocks(); }
+  });
   fs.collection("packCatalog").onSnapshot(snap=>{
     const idx={};
     snap.docs.forEach(d=>{
