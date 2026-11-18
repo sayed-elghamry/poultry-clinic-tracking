@@ -2927,6 +2927,31 @@ async function addClosureData(flockId){
   try{ await fs.collection("flocks").doc(flockId).update({actualTotalFeedKg:feed,actualAvgWeightG:(w&&!isNaN(w))?w:null}); alert("✅ اتحفظت بيانات الإغلاق. تقدر دلوقتي تولّد تقرير الدورة."); }
   catch(e){ alert("⚠ تعذّر الحفظ: "+(e.message||e)); }
 }
+/* ---------------------- إنهاء/إلغاء/تأجيل مواعيد المتابعة يدويًا ---------------------- */
+async function setFollowupStatus(visitId,status){
+  const label=status==="done"?"تمت":"ملغاة";
+  if(!confirm("تأكيد: المتابعة دي "+label+"؟ هتختفي من التنبيهات."))return;
+  try{ await fs.collection("visits").doc(visitId).update({nextVisitDone:true,nextVisitStatus:status,nextVisitDoneAt:new Date().toISOString()}); }
+  catch(e){ alert("⚠ تعذّر الحفظ: "+(e.message||e)); }
+}
+async function postponeFollowup(visitId){
+  const v=STATE.visits.find(x=>x.id===visitId); if(!v) return;
+  const d=prompt("تاريخ المتابعة الجديد (YYYY-MM-DD):", v.nextVisitDate||"");
+  if(!d) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())||isNaN(new Date(d.trim()))){ alert("صيغة التاريخ غير صحيحة. مثال: 2026-11-25"); return; }
+  try{ await fs.collection("visits").doc(visitId).update({nextVisitDate:d.trim()}); }
+  catch(e){ alert("⚠ تعذّر الحفظ: "+(e.message||e)); }
+}
+async function closeOldFollowups(){
+  const today=new Date().toISOString().slice(0,10);
+  const list=STATE.visits.filter(v=>v.nextVisitDate&&!v.nextVisitDone&&v.nextVisitDate<today&&daysBetween(v.nextVisitDate,today)>14&&
+    !STATE.visits.some(v2=>v2.id!==v.id&&v2.clientId===v.clientId&&(!v.flockId||v2.flockId===v.flockId)&&v2.date>=v.nextVisitDate));
+  if(!list.length) return;
+  if(!confirm("إنهاء "+list.length+" متابعة متأخرة أكتر من 14 يوم (هتتسجل كـ «تمت»)؟")) return;
+  try{
+    for(let i=0;i<list.length;i+=400){ const b=fs.batch(); list.slice(i,i+400).forEach(v=>b.update(fs.collection("visits").doc(v.id),{nextVisitDone:true,nextVisitStatus:"done",nextVisitDoneAt:new Date().toISOString()})); await b.commit(); }
+  }catch(e){ alert("⚠ تعذّر الحفظ: "+(e.message||e)); }
+}
 function startListeners(){
   fs.collection("clients").onSnapshot(snap=>{
     STATE.clients = snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -3033,7 +3058,7 @@ function renderDashboard(){
   }
 
   const followups=STATE.visits.filter(v=>{
-    if(!v.nextVisitDate) return false;
+    if(!v.nextVisitDate || v.nextVisitDone) return false;
     // لو حصلت زيارة تانية لنفس العميل (ونفس الدورة لو محدَّدة) في يوم ميعاد المتابعة أو بعده، يبقى المتابعة اتعملت فعلاً ومحتاجناش نفضل منبّهين بيها
     const fulfilled=STATE.visits.some(v2=>v2.id!==v.id && v2.clientId===v.clientId && (!v.flockId||v2.flockId===v.flockId) && v2.date>=v.nextVisitDate);
     return !fulfilled;
@@ -3050,10 +3075,15 @@ function renderDashboard(){
         <b>${v.nextVisitDate}</b> — ${client?client.name:'—'} — ${typeLabel[v.nextVisitType]||'متابعة'}${v.nextVisitNote?' — '+v.nextVisitNote:''}
         <div class="row">
           <button class="btn sm" onclick="openClientDetail('${v.clientId}')">فتح ملف العميل</button>
+          <button class="btn sm pri" onclick="setFollowupStatus('${v.id}','done')">✔ تمت</button>
+          <button class="btn sm" onclick="postponeFollowup('${v.id}')">🗓 تأجيل</button>
+          <button class="btn sm danger" onclick="setFollowupStatus('${v.id}','cancelled')">✖ إلغاء</button>
           <button class="btn sm" onclick='downloadVisitReminderICS(${JSON.stringify(v.nextVisitDate)}, ${JSON.stringify(title)}, ${JSON.stringify(v.nextVisitNote||"")})'>📅 تذكير للتقويم</button>
         </div>
       </div>`;
     }).join("") : '<p class="hint">لا توجد مواعيد متابعة مسجَّلة حاليًا.</p>';
+    const oldOver=followups.filter(f=>f.overdue&&daysBetween(f.v.nextVisitDate,today)>14);
+    if(oldOver.length) hostF.innerHTML='<div class="row" style="margin-bottom:8px"><button class="btn sm danger" onclick="closeOldFollowups()">✔ إنهاء كل المتأخر أكتر من 14 يوم ('+oldOver.length+')</button></div>'+hostF.innerHTML;
   }
 
   const recent=STATE.visits.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
