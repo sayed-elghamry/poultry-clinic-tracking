@@ -759,6 +759,7 @@
       <div class="hint" id="cd_meta"></div>
       <div class="grid3" id="cd_stats" style="margin-top:10px"></div>
       <div id="cd_compare" style="margin-top:10px"></div>
+      <div id="cd_house" style="margin-top:10px"></div>
       <hr class="divider">
       <h3>الدورات</h3>
       <div id="cd_flocks"></div>
@@ -3243,6 +3244,101 @@ function renderCycleComparison(id){
     ctx.lineWidth=1;
   }
 }
+/* ---------------------- تحليل العنبر (يظهر بعد دورتين مقفولتين أو أكتر لنفس العنبر) ---------------------- */
+let __haOpen=false, __haKey="";
+function setHA(open,key){ if(open!==undefined) __haOpen=open; if(key!==undefined) __haKey=key; if(currentClientDetailId) renderHouseAnalysis(currentClientDetailId); }
+function houseGroups(clientId){
+  const g={};
+  STATE.flocks.filter(f=>f.clientId===clientId && f.status==="closed" && normHouseName(f.houseName)).forEach(f=>{
+    const k=normHouseName(f.houseName)+"|"+(f.birdType||"");
+    (g[k]=g[k]||{key:k,house:String(f.houseName).trim(),birdType:f.birdType,flocks:[]}).flocks.push(f);
+  });
+  Object.values(g).forEach(x=>x.flocks.sort((a,b)=>new Date(a.placementDate)-new Date(b.placementDate)));
+  return Object.values(g).filter(x=>x.flocks.length>=2);
+}
+function houseWeeklyMort(f){
+  const init=parseFloat(f.birdCountInitial)||0; if(!init||!f.placementDate) return null;
+  const byDate={}; STATE.visits.filter(v=>v.flockId===f.id).forEach(v=>(v.mortalityLog||[]).forEach(m=>{ const d=parseInt(m.dead)||0; if(d&&m.date) byDate[m.date]=(byDate[m.date]||0)+d; }));
+  const wk={}; let any=false;
+  Object.keys(byDate).forEach(d=>{ const age=daysBetween(f.placementDate,d)+1; if(age<1) return; const w=Math.ceil(age/7); wk[w]=(wk[w]||0)+byDate[d]/init*100; any=true; });
+  return any?wk:null;
+}
+function renderHouseAnalysis(id){
+  const box=document.getElementById("cd_house"); if(!box) return;
+  const groups=houseGroups(id);
+  if(!groups.length){ box.innerHTML=""; return; }
+  if(!__haOpen){ box.innerHTML='<button class="btn" onclick="setHA(true)">🏠 تحليل العنبر ('+groups.map(g=>epiEsc(g.house)+': '+g.flocks.length+' دورات').join(" · ")+')</button>'; return; }
+  let grp=groups.find(g=>g.key===__haKey)||groups[0]; __haKey=grp.key;
+  const e=epiEsc, fmt=(x,d)=>x==null||isNaN(x)?"—":Number(x).toFixed(d);
+  const avg=a=>{ a=a.filter(x=>x!=null&&!isNaN(x)); return a.length?a.reduce((s,x)=>s+x,0)/a.length:null; };
+  const flocks=grp.flocks, rows=flocks.map(cycleStats);
+  const ids=new Set(flocks.map(f=>f.id));
+  const visits=STATE.visits.filter(v=>ids.has(v.flockId));
+  const fById={}; flocks.forEach(f=>fById[f.id]=f);
+  const notes=[];
+  // 1) متوسطات + مقارنة بباقي عنابر العميل
+  const aMort=avg(rows.map(r=>r.mortPct)), aFcr=avg(rows.map(r=>r.fcr)), aW=avg(rows.map(r=>r.weight)), aDays=avg(rows.map(r=>r.days));
+  const others=STATE.flocks.filter(f=>f.clientId===id&&f.status==="closed"&&f.birdType===grp.birdType&&!ids.has(f.id));
+  const oMort=avg(others.map(f=>cycleStats(f).mortPct)), oFcr=avg(others.map(f=>cycleStats(f).fcr));
+  if(aMort!=null&&oMort!=null&&others.length>=2){ const d=aMort-oMort; if(Math.abs(d)>=0.5) notes.push("نفوق العنبر ده بمتوسط "+fmt(aMort,2)+"% مقابل "+fmt(oMort,2)+"% لباقي عنابر العميل ("+(d>0?"أعلى":"أقل")+" بـ "+fmt(Math.abs(d),2)+" نقطة)."); }
+  const mm=rows.filter(r=>r.mortPct!=null);
+  if(mm.length>=3){ const h=Math.floor(mm.length/2), a1=avg(mm.slice(0,h).map(r=>r.mortPct)), a2=avg(mm.slice(h).map(r=>r.mortPct)); if(Math.abs(a2-a1)>=0.5) notes.push("اتجاه النفوق عبر الدورات: "+(a2>a1?"بيزيد":"بيقلّ")+" (من "+fmt(a1,2)+"% في الدورات الأولى إلى "+fmt(a2,2)+"% في الأحدث)."); }
+  // 2) أعمار ذروة النفوق
+  const wkAll=flocks.map(houseWeeklyMort).filter(Boolean);
+  let wkHtml="";
+  if(wkAll.length){
+    const maxW=Math.max(...wkAll.map(w=>Math.max(...Object.keys(w).map(Number))),5);
+    const avgW=[]; for(let w=1;w<=maxW;w++) avgW.push(avg(wkAll.map(x=>x[w]||0))||0);
+    const mx=Math.max(...avgW,0.01);
+    wkHtml='<b class="small">متوسط النفوق الأسبوعي % (من العدد الابتدائي) — '+wkAll.length+' دورات</b><div style="margin-top:6px">'+
+      avgW.map((v,i)=>'<div style="display:flex;align-items:center;gap:6px;font-size:12.5px"><span style="width:62px">أسبوع '+(i+1)+'</span><div style="flex:1;background:#eee;border-radius:4px;height:10px"><div style="width:'+Math.round(v/mx*100)+'%;background:'+(v===mx?"#c0392b":"#1d6b3f")+';height:10px;border-radius:4px"></div></div><b style="width:46px;text-align:left">'+v.toFixed(2)+'</b></div>').join("")+'</div>';
+    const peaks={}; wkAll.forEach(w=>{ let bw=null,bv=-1; Object.keys(w).forEach(k=>{ if(w[k]>bv){bv=w[k];bw=+k;} }); if(bw!=null) peaks[bw]=(peaks[bw]||0)+1; });
+    const top=Object.entries(peaks).sort((a,b)=>b[1]-a[1])[0];
+    if(top&&top[1]>=2) notes.push("ذروة النفوق بتتكرر في الأسبوع "+top[0]+" ("+top[1]+" من "+wkAll.length+" دورات) — ركّز مراجعتك على العمر ده في العنبر (تدفئة/تهوية/تحصين/كوكسيديا حسب العمر).");
+  } else wkHtml='<p class="hint">سجل النفوق بالزيارات ناقص — مفيش تحليل لأعمار الذروة.</p>';
+  // 3) أمراض متكررة بأعمارها
+  const dxMap={};
+  visits.forEach(v=>{
+    const labs=(v.confirmedDiagnoses&&v.confirmedDiagnoses.length)?v.confirmedDiagnoses.filter(x=>x.id!=="followup").map(x=>x.label):(v.confirmedDiagnosisId&&v.confirmedDiagnosisId!=="followup"?[(DISEASES.find(x=>x.id===v.confirmedDiagnosisId)||{}).ar].filter(Boolean):[]);
+    labs.forEach(l=>{ const g=dxMap[l]||(dxMap[l]={flocks:new Set(),ages:[]}); g.flocks.add(v.flockId); if(v.ageDays!=null&&!isNaN(v.ageDays)) g.ages.push(+v.ageDays); });
+  });
+  const dxRows=Object.entries(dxMap).filter(([k,g])=>g.flocks.size>=2).sort((a,b)=>b[1].flocks.size-a[1].flocks.size);
+  const dxHtml=dxRows.length?'<ul style="margin:6px 18px 0 0;line-height:1.9">'+dxRows.map(([k,g])=>'<li><b>'+e(k)+'</b> — '+g.flocks.size+' من '+flocks.length+' دورات'+(g.ages.length?' (بأعمار '+Math.min(...g.ages)+'–'+Math.max(...g.ages)+' يوم)':'')+'</li>').join("")+'</ul>':'<p class="hint">مفيش مرض مؤكَّد اتكرر في دورتين أو أكتر.</p>';
+  if(dxRows.length) notes.push("مشكلة مزمنة في العنبر: "+dxRows.slice(0,3).map(([k,g])=>k).join("، ")+" — اتكررت عبر الدورات؛ راجع التطهير والفرشة والمياه ومصدر الكتاكيت قبل الدورة الجاية.");
+  // 4) الأدوية وفعاليتها داخل العنبر
+  const dm={};
+  visits.forEach(v=>(v.medications||[]).forEach(m0=>{ const m=effMed(m0); if(!m||!m.drug) return; const k=m.drug.trim().toLowerCase(); const g=dm[k]||(dm[k]={name:m.drug,flocks:new Set(),pos:0,part:0,neg:0});
+    g.flocks.add(v.flockId); if(m.response==="excellent"||m.response==="good") g.pos++; else if(m.response==="partial") g.part++; else if(m.response==="weak"||m.response==="failed") g.neg++; }));
+  const dmRows=Object.values(dm).sort((a,b)=>b.flocks.size-a.flocks.size||(b.pos+b.part+b.neg)-(a.pos+a.part+a.neg)).slice(0,8);
+  const drugHtml=dmRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px"><thead><tr style="background:var(--surface2,#f4f6f4)"><th style="padding:5px">الدواء</th><th>دورات</th><th>جيدة/ممتازة</th><th>جزئية</th><th>ضعيفة/فشل</th></tr></thead><tbody>'+
+    dmRows.map(g=>'<tr style="border-bottom:1px solid #eee"><td style="padding:5px">'+e(g.name)+'</td><td style="text-align:center">'+g.flocks.size+'</td><td style="text-align:center">'+g.pos+'</td><td style="text-align:center">'+g.part+'</td><td style="text-align:center;'+(g.neg?'color:#c0392b;font-weight:700':'')+'">'+g.neg+'</td></tr>').join("")+'</tbody></table></div>':'<p class="hint">مفيش أدوية مسجلة.</p>';
+  dmRows.filter(g=>g.neg>=2&&g.neg>g.pos).forEach(g=>notes.push("«"+g.name+"» استجابته ضعيفة/فاشلة في هذا العنبر ("+g.neg+" مرات) — فكّر في اختبار حساسية أو بديل."));
+  // 5) البيئة عبر الدورات
+  const envRows=flocks.map(f=>{
+    const fv=visits.filter(v=>v.flockId===f.id&&v.farmInspection);
+    const num=k=>fv.map(v=>parseFloat(v.farmInspection[k])).filter(x=>!isNaN(x));
+    const am=num("ammonia"), hu=num("humidity"), tp=num("temperature"), lt=num("litterMoisture");
+    return {f,amAvg:avg(am),amHigh:am.length?am.filter(x=>x>25).length+"/"+am.length:"—",hu:avg(hu),tp:avg(tp),lt:avg(lt),poorBio:fv.filter(v=>v.farmInspection.biosecurity==="ضعيف").length};
+  });
+  const envHasData=envRows.some(r=>r.amAvg!=null||r.hu!=null||r.tp!=null);
+  const envHtml=envHasData?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px"><thead><tr style="background:var(--surface2,#f4f6f4)"><th style="padding:5px">التحميل</th><th>أمونيا (متوسط)</th><th>زيارات أمونيا&gt;25</th><th>رطوبة %</th><th>حرارة °م</th><th>رطوبة فرشة</th><th>أمن حيوي ضعيف</th></tr></thead><tbody>'+
+    envRows.map(r=>'<tr style="border-bottom:1px solid #eee;text-align:center"><td style="padding:5px">'+e(r.f.placementDate||"—")+'</td><td>'+fmt(r.amAvg,1)+'</td><td>'+r.amHigh+'</td><td>'+fmt(r.hu,0)+'</td><td>'+fmt(r.tp,1)+'</td><td>'+fmt(r.lt,0)+'</td><td>'+(r.poorBio||"—")+'</td></tr>').join("")+'</tbody></table></div>':'<p class="hint">مفيش قياسات بيئية مسجلة في زيارات الدورات دي.</p>';
+  const hiAm=envRows.filter(r=>r.amAvg!=null&&r.amAvg>25).length;
+  if(hiAm>=2) notes.push("الأمونيا فوق 25 ppm في "+hiAm+" دورات — مشكلة تهوية/فرشة متكررة بالعنبر.");
+  const pb=envRows.filter(r=>r.poorBio>0).length; if(pb>=2) notes.push("الأمن الحيوي اتسجّل «ضعيف» في "+pb+" دورات.");
+  if(!notes.length) notes.push("مفيش نمط متكرر واضح لحد دلوقتي — يزيد وضوح التحليل مع تسجيل نفوق وأمراض وقياسات بيئية أكتر في كل زيارة.");
+  const sel=groups.length>1?'<select onchange="setHA(undefined,this.value)">'+groups.map(g=>'<option value="'+e(g.key)+'"'+(g.key===grp.key?' selected':'')+'>'+e(g.house)+' — '+e(BIRD_LABEL[g.birdType]||g.birdType)+'</option>').join("")+'</select>':'<b>'+e(grp.house)+' — '+e(BIRD_LABEL[grp.birdType]||grp.birdType)+'</b>';
+  const kpi=(n,l)=>'<div class="statbox"><div class="num">'+n+'</div><div class="lbl">'+l+'</div></div>';
+  box.innerHTML='<div class="card" style="margin:0;border:1px solid #cfe3d6"><div class="row" style="justify-content:space-between;align-items:center"><b>🏠 تحليل العنبر</b><span>'+sel+' <button class="btn sm" onclick="setHA(false)">إخفاء</button></span></div>'+
+    '<div class="grid3" style="margin-top:8px">'+kpi(flocks.length,'دورات مقفولة')+kpi(fmt(aMort,2)+'%','متوسط النفوق')+kpi(fmt(aFcr,2),'متوسط FCR')+'</div>'+
+    '<div class="small" style="color:#666;margin-top:4px">متوسط العمر عند الإغلاق: '+fmt(aDays,0)+' يوم · متوسط الوزن: '+(aW?Math.round(aW)+' جم':'—')+(oMort!=null&&others.length>=2?' · باقي العنابر: نفوق '+fmt(oMort,2)+'%'+(oFcr!=null?' / FCR '+fmt(oFcr,2):''):'')+'</div>'+
+    '<div style="margin-top:10px"><b>📝 الخلاصة</b><ul style="margin:6px 18px 0 0;line-height:1.9">'+notes.map(n=>'<li>'+e(n)+'</li>').join("")+'</ul></div>'+
+    '<div style="margin-top:12px">'+wkHtml+'</div>'+
+    '<div style="margin-top:12px"><b>🦠 أمراض متكررة بنفس العنبر</b>'+dxHtml+'</div>'+
+    '<div style="margin-top:12px"><b>💊 الأدوية وفعاليتها في هذا العنبر</b>'+drugHtml+'</div>'+
+    '<div style="margin-top:12px"><b>🌡️ البيئة عبر الدورات</b>'+envHtml+'</div>'+
+    '<div class="small" style="color:#777;margin-top:8px">التحليل آلي من الزيارات المسجّلة للدورات المقفولة لنفس العنبر (نفس اسم العنبر بعد توحيد الكتابة ونفس نوع الطائر)؛ دقته بتزيد بزيادة اكتمال التسجيل.</div></div>';
+}
 function renderClientDetail(id){
   const c=STATE.clients.find(x=>x.id===id); if(!c)return;
   document.getElementById("cd_name").textContent=c.name;
@@ -3259,6 +3355,7 @@ function renderClientDetail(id){
     <div class="statbox"><div class="num">${openCount}</div><div class="lbl">دورات مفتوحة</div></div>
     <div class="statbox"><div class="num">${lastVisit?lastVisit.date:'—'}</div><div class="lbl">آخر زيارة</div></div>`;
   try{ renderCycleComparison(id); }catch(e){ console.warn("cycle compare",e); }
+  try{ renderHouseAnalysis(id); }catch(e){ console.warn("house analysis",e); }
   const host=document.getElementById("cd_flocks");
   if(!flocks.length){host.innerHTML='<p class="hint">لا توجد دورات مسجّلة لهذا العميل بعد.</p>';return;}
   host.innerHTML=flocks.map(f=>{
@@ -4660,7 +4757,6 @@ function flockNeedsFollowUp(flockId){
   if(!last) return false;
   return (last.medications||[]).some(m=>m.status!=="not_used" && (!m.response || !m.responseConfirmed));
 }
-function normHouseName(h){ return (h||"").trim().replace(/\s+/g," "); }
 // كل أسماء العنابر (مفتوحة ومقفولة) اللي استُخدمت قبل كده لهذا العميل — نقترحها عشان الطبيب يكتب نفس الاسم بالظبط كل مرة
 // (بدون ده، اختلاف بسيط في كتابة اسم العنبر بين دورة وتانية بيكسر مطابقة العنبر وتحليل الأنماط المتكررة)
 function populateHouseSuggestions(clientId){
