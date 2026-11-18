@@ -3277,6 +3277,114 @@ function cycleStats(f){
   let cum=0; const pts=curve.map(c=>{ cum+=c.dead; return {age:c.age,pct:init?cum/init*100:null}; }).filter(p=>p.pct!=null&&p.age>=0);
   return {f,visits:visits.length,mortPct,days,fcr,weight:f.actualAvgWeightG||null,dx:Object.keys(dx),abx,drugs,pts};
 }
+/* ---------------------- تحليل معمّق + توصيات للدورة (داخل كارت مقارنة الدورات) ---------------------- */
+let __deepId="";
+function setDeep(id){ __deepId=id; if(currentClientDetailId) renderCycleComparison(currentClientDetailId); }
+function cumMortAt(r,age){ if(!r.pts||!r.pts.length) return null; let v=0; r.pts.forEach(p=>{ if(p.age<=age) v=p.pct; }); return v; }
+/* أسبوع ذروة النفوق: من سجل النفوق، ثم النفوق اليومي المسجّل، ثم تكرار ذكر النفوق في الشكاوى */
+function peakWeekOf(f){
+  const wk=houseWeeklyMort(f);
+  if(wk){ let bw=null,bv=-1; Object.keys(wk).forEach(k=>{ if(wk[k]>bv){bv=wk[k];bw=+k;} }); if(bw!=null) return {w:bw,src:"log"}; }
+  const sg=houseMortSignals(f);
+  const dk=Object.keys(sg.dailyWeeks); if(dk.length){ const m=Math.max(...dk.map(k=>sg.dailyWeeks[k])); return {w:Math.min(...dk.filter(k=>sg.dailyWeeks[k]===m).map(Number)),src:"daily"}; }
+  const ck=Object.keys(sg.complaintWeeks); if(ck.length){ const m=Math.max(...ck.map(k=>sg.complaintWeeks[k])); return {w:Math.min(...ck.filter(k=>sg.complaintWeeks[k]===m).map(Number)),src:"complaint"}; }
+  return null;
+}
+function dxLabelsOfVisit(v){
+  if(v.confirmedDiagnoses&&v.confirmedDiagnoses.length) return v.confirmedDiagnoses.filter(x=>x.id!=="followup").map(x=>x.label);
+  if(v.confirmedDiagnosisId&&v.confirmedDiagnosisId!=="followup"){ const d=DISEASES.find(x=>x.id===v.confirmedDiagnosisId); return d?[d.ar]:[]; }
+  return [];
+}
+function deepCycleAnalysis(rows,L){
+  const avg=a=>{ a=a.filter(x=>x!=null&&!isNaN(x)); return a.length?a.reduce((s,x)=>s+x,0)/a.length:null; };
+  const f=L.f, age=L.days||0;
+  const priors=rows.filter(r=>r!==L && new Date(r.f.placementDate)<new Date(f.placementDate));
+  const facts=[], recs=[], cmp=[]; let high=0;
+  const addRec=(lvl,t,why)=>{ recs.push({lvl,t,why}); if(lvl==="high") high++; };
+  const fv=STATE.visits.filter(v=>v.flockId===f.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const sig=houseMortSignals(f), pk=peakWeekOf(f), wk=houseWeeklyMort(f);
+  const hasLog=!!wk;
+  // 1) النفوق مقابل الدورات السابقة بنفس العمر
+  const cur=L.mortPct;
+  const pAt=priors.filter(p=>p.pts&&p.pts.length&&(p.days||0)>=age*0.9).map(p=>cumMortAt(p,age));
+  const pAvg=avg(pAt);
+  cmp.push(["النفوق التراكمي % عند عمر "+age+" يوم",cur,pAvg,2,true]);
+  if(cur!=null&&pAvg!=null){
+    const d=cur-pAvg;
+    if(d>=0.5){ facts.push("🔴 النفوق عند عمر "+age+" يوم ("+cur.toFixed(2)+"%) أعلى من متوسط دوراتك السابقة عند نفس العمر ("+pAvg.toFixed(2)+"%) بفارق "+d.toFixed(2)+" نقطة."); addRec("high","نفوق أعلى من الطبيعي لدورات العميل — حدّد أسبوع الذروة وسببه (تشريح عينة نافقة + فحص مخبري) بدل الاكتفاء بالعلاج العرضي.","الفرق عن المعتاد "+d.toFixed(2)+" نقطة مئوية"); }
+    else if(d<=-0.5) facts.push("🟢 النفوق ("+cur.toFixed(2)+"%) أقل من متوسط دوراتك السابقة بنفس العمر ("+pAvg.toFixed(2)+"%) — الدورة أفضل من المعتاد.");
+    else facts.push("🟡 النفوق ("+cur.toFixed(2)+"%) قريب من متوسط دوراتك السابقة بنفس العمر ("+pAvg.toFixed(2)+"%).");
+  } else if(cur!=null) facts.push("النفوق التراكمي المسجّل "+cur.toFixed(2)+"% — مفيش دورات سابقة بسجل كافي للمقارنة بنفس العمر.");
+  // 2) نفوق من غير أرقام: من الشكاوى
+  const cv=fv.filter(v=>complaintMentionsMortality(v.complaint));
+  if(!hasLog){
+    if(cv.length){
+      const ages=cv.map(v=>v.ageDays!=null&&v.ageDays!==""?"يوم "+v.ageDays:v.date).join("، ");
+      facts.push("📣 سجل النافق مش مكتوب بالأرقام — لكن الشكوى ذكرت ارتفاع/وجود نفوق في "+cv.length+" زيارة ("+ages+")"+(pk&&pk.src==="complaint"?" — أغلبها حوالين الأسبوع "+pk.w:"")+".");
+      addRec("high","النفوق هنا مقدَّر من الشكاوى فقط (غير مقاس): سجّل عدد النافق يوميًا بكارت النافق (أو اسحبه من كراسة المزرعة) عشان التحليل والمقارنة يبقوا بأرقام.","لا يوجد سجل نفوق رقمي للدورة");
+    } else if(fv.length) addRec("med","مفيش سجل نفوق ولا ذكر للنفوق بالشكاوى — لو فيه نافق فعلي اتسجّل عشان يتحسب.","لا توجد بيانات نفوق");
+  }
+  // 3) توقيت الذروة مقابل الدورات السابقة
+  if(pk){
+    const srcT={log:"من سجل النفوق",daily:"من النفوق اليومي المسجّل",complaint:"من الشكاوى"}[pk.src];
+    const pp=priors.map(p=>peakWeekOf(p.f)).filter(Boolean);
+    const same=pp.filter(x=>Math.abs(x.w-pk.w)<=1).length;
+    facts.push("📅 ذروة النفوق في الدورة دي: الأسبوع "+pk.w+" ("+srcT+")"+(pp.length?(same>=2||(pp.length&&same===pp.length&&pp.length>=1)?" — وبتتكرر قريب من نفس الأسبوع في "+same+" من "+pp.length+" دورات سابقة (نمط ثابت يشير لسبب مرتبط بالعمر/البرنامج مش حدث عشوائي)":" — الدورات السابقة كانت ذروتها في أسابيع مختلفة ("+pp.map(x=>x.w).join("، ")+")"):"")+".");
+    if(pk.w<=1) addRec("high","نفوق مبكر (أول أسبوع): راجع جودة الكتكوت ومصدره وبرنامج الأمهات، وإجراءات التحضين (الحرارة والرطوبة، توفر الماء والعلف أول 48 ساعة)، وسجّل نسبة النفوق أول 7 أيام.","الذروة في الأسبوع الأول");
+    else if(pk.w<=3) addRec("med","ذروة في الأسابيع 2–3: راجع توقيت وجودة التحصينات، والتهوية والأمونيا، والتهابات الأمعاء/الكوكسيديا، وكوليباسيلوز ثانوي بعد الإجهاد التنفسي.","الذروة في الأسبوع "+pk.w);
+    else addRec("med","ذروة متأخرة (من الأسبوع 4): راجع الإجهاد الحراري والكثافة والتهوية، الاستسقاء/النفوق المفاجئ، وجودة العلف، والعدوى التنفسية/الكولي.","الذروة في الأسبوع "+pk.w);
+  }
+  if(wk&&wk[1]!=null&&wk[1]>1) addRec("high","نفوق الأسبوع الأول "+wk[1].toFixed(2)+"% (أعلى من 1%) — يُراجَع جودة الكتكوت والتحضين.","نفوق أول أسبوع مرتفع");
+  // 4) الأمراض المؤكدة: متكررة أم جديدة
+  const dxNow={}; fv.forEach(v=>dxLabelsOfVisit(v).forEach(l=>{ (dxNow[l]=dxNow[l]||[]).push(v.ageDays!=null&&v.ageDays!==""?+v.ageDays:null); }));
+  const dxKeys=Object.keys(dxNow);
+  if(dxKeys.length){
+    const rec=[], nw=[];
+    dxKeys.forEach(k=>{ const n=priors.filter(p=>p.dx.includes(k)).length; const ag=dxNow[k].filter(x=>x!=null); const agT=ag.length?" (عمر "+Math.min(...ag)+(Math.max(...ag)!==Math.min(...ag)?"–"+Math.max(...ag):"")+")":""; (n>=1?rec:nw).push({k,n,agT}); });
+    if(rec.length){ facts.push("🔁 أمراض متكررة من دورات سابقة: "+rec.map(x=>x.k+x.agT+" — ظهر قبل كده في "+x.n+" دورة").join("، ")+"."); rec.forEach(x=>{ if(x.n>=2) addRec("high","تكرار «"+x.k+"» في "+(x.n+1)+" دورات — حوّل التركيز من العلاج للوقاية: برنامج التحصين المناسب، الأمن الحيوي، التطهير بين الدورات، فحص المياه والفرشة.","مرض متكرر عبر الدورات"); else addRec("med","«"+x.k+"» ظهر في دورة سابقة كمان — راقب تكراره ونفّذ إجراءات الوقاية الخاصة به.","ظهر مرتين"); }); }
+    if(nw.length) facts.push("🆕 تشخيصات جديدة في الدورة دي: "+nw.map(x=>x.k+x.agT).join("، ")+".");
+  } else if(fv.length) facts.push("مفيش تشخيص مؤكد مسجّل في زيارات الدورة — اختار التشخيص المؤكد من القائمة عشان التحليل يربط المرض بالعمر والعلاج.");
+  // 5) العلاج
+  cmp.push(["أصناف المضادات الحيوية",L.abx,avg(priors.map(p=>p.abx)),1,false]);
+  cmp.push(["عدد الزيارات",L.visits,avg(priors.map(p=>p.visits)),1,false]);
+  const pAbx=avg(priors.map(p=>p.abx));
+  if(pAbx!=null&&L.abx>=pAbx+2&&!(cur!=null&&pAvg!=null&&cur<pAvg)) addRec("high","استخدام مضادات حيوية أكتر من المعتاد ("+L.abx+" مقابل "+pAbx.toFixed(1)+") من غير تحسن واضح في النفوق — ثبّت التشخيص بعمل مزرعة واختبار حساسية، وتجنّب التتابع العشوائي، والتزم بفترات السحب.","مضادات حيوية مرتفعة بدون تحسن");
+  const weak={}; fv.forEach(v=>(v.medications||[]).forEach(m0=>{ const m=effMed(m0); if(m&&m.drug&&(m.response==="weak"||m.response==="failed")) weak[m.drug]=(weak[m.drug]||0)+1; }));
+  const wk2=Object.keys(weak); if(wk2.length){ facts.push("💊 استجابة ضعيفة/فاشلة: "+wk2.map(k=>k+" ("+weak[k]+")").join("، ")+"."); addRec("med","راجع «"+wk2.join("، ")+"»: اختبار حساسية أو بديل بمجموعة مختلفة قبل تكرار نفس الدواء.","استجابة ضعيفة مسجّلة"); }
+  // 6) البيئة
+  const num=(vs,k)=>vs.map(v=>v.farmInspection&&parseFloat(v.farmInspection[k])).filter(x=>x!=null&&!isNaN(x));
+  const am=num(fv,"ammonia"); const amHi=am.filter(x=>x>25).length;
+  const pAm=avg(priors.map(p=>avg(num(STATE.visits.filter(v=>v.flockId===p.f.id),"ammonia"))));
+  cmp.push(["متوسط الأمونيا (ppm)",avg(am),pAm,1,true]);
+  if(amHi){ facts.push("🌫 الأمونيا فوق 25 ppm في "+amHi+" من "+am.length+" قياس."); addRec(amHi>=2?"high":"med","أمونيا مرتفعة: زوّد التهوية الدنيا، جفّف الفرشة وأصلح السقايات والتسريب، وراجع الكثافة والتغذية البروتينية.","أمونيا فوق 25 ppm"); }
+  const poor=fv.filter(v=>v.farmInspection&&v.farmInspection.biosecurity==="ضعيف").length;
+  if(poor) { facts.push("🚧 الأمن الحيوي اتسجّل «ضعيف» في "+poor+" زيارة."); addRec("med","عالج ثغرات الأمن الحيوي المسجّلة (حمّام أقدام، مصدر المياه، زوّار ومعدات، مكافحة قوارض وطيور برّية).","أمن حيوي ضعيف"); }
+  // 7) الأداء (لو اتقفلت)
+  if(L.f.status==="closed"){ cmp.push(["FCR",L.fcr,avg(priors.filter(p=>p.f.status==="closed").map(p=>p.fcr)),2,true]); cmp.push(["وزن التسويق (جم)",L.weight,avg(priors.filter(p=>p.f.status==="closed").map(p=>p.weight)),0,false]); }
+  if(!recs.length) addRec("low","مفيش مؤشر خطر واضح من البيانات المسجّلة — استمر على نفس البرنامج وراقب النفوق اليومي ومعدل العلف.","");
+  if(!facts.length) facts.push("البيانات المسجّلة للدورة قليلة — يزيد وضوح التحليل بتسجيل النافق والتشخيص المؤكد والقياسات البيئية في كل زيارة.");
+  const order={high:0,med:1,low:2};
+  recs.sort((a,b)=>order[a.lvl]-order[b.lvl]);
+  return {facts,recs,cmp,high,hasLog,priorsN:priors.length};
+}
+function deepCycleAnalysisHTML(rows){
+  if(!rows.length) return "";
+  const e=epiEsc;
+  let L=rows.find(r=>r.f.id===__deepId); if(!L){ L=rows[rows.length-1]; __deepId=L.f.id; }
+  const A=deepCycleAnalysis(rows,L);
+  const fm=(x,d)=>x==null||isNaN(x)?"—":Number(x).toFixed(d);
+  const sel='<select onchange="setDeep(this.value)">'+rows.map(r=>'<option value="'+r.f.id+'"'+(r.f.id===L.f.id?' selected':'')+'>'+e(r.f.houseName||"—")+' — '+e(r.f.placementDate||"")+(r.f.status==="open"?" (مفتوحة)":"")+'</option>').join("")+'</select>';
+  const badge=A.high>=2?'<span class="chip warn">🔴 محتاجة تدخل</span>':A.high===1?'<span class="chip warn">🟠 تحتاج متابعة</span>':'<span class="chip visit">🟢 مستقرة</span>';
+  const cmpTbl='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:380px"><thead><tr style="background:var(--surface2,#f4f6f4)"><th style="padding:5px;text-align:right">المؤشر</th><th>الدورة</th><th>متوسط السابق ('+A.priorsN+')</th><th>الفرق</th></tr></thead><tbody>'+
+    A.cmp.filter(c=>c[1]!=null||c[2]!=null).map(c=>{ const d=(c[1]!=null&&c[2]!=null)?c[1]-c[2]:null; const bad=d!=null&&c[4]&&d>0; return '<tr style="border-bottom:1px solid #eee;text-align:center"><td style="padding:5px;text-align:right">'+e(c[0])+'</td><td>'+fm(c[1],c[3])+'</td><td>'+fm(c[2],c[3])+'</td><td style="font-weight:700;color:'+(d==null?'#777':(bad?'#b3261e':'#1c6b45'))+'">'+(d==null?"—":(d>0?"+":"")+d.toFixed(c[3]))+'</td></tr>'; }).join("")+'</tbody></table></div>';
+  const lvlI={high:"🔴",med:"🟠",low:"🟢"};
+  return '<div style="margin-top:12px;padding:10px;background:#f4faf6;border:1px solid #cfe3d6;border-radius:10px">'+
+    '<div class="row" style="justify-content:space-between;align-items:center"><b>🔬 تحليل معمّق وتوصيات</b><span>'+sel+' '+badge+'</span></div>'+
+    '<ul style="margin:8px 18px 0 0;line-height:1.9">'+A.facts.map(x=>'<li>'+e(x)+'</li>').join("")+'</ul>'+
+    (A.priorsN?'<div style="margin-top:8px"><b class="small">📊 مقارنة بالدورات السابقة لنفس النوع</b>'+cmpTbl+'</div>':'<p class="hint">دي أول دورة من النوع ده — مفيش دورات سابقة للمقارنة.</p>')+
+    '<div style="margin-top:10px"><b>✅ التوصيات (مرتبة بالأولوية)</b><ol style="margin:6px 18px 0 0;line-height:1.9">'+A.recs.map(r=>'<li>'+lvlI[r.lvl]+' '+e(r.t)+(r.why?' <span class="small" style="color:#777">['+e(r.why)+']</span>':'')+'</li>').join("")+'</ol></div>'+
+    '<div class="small" style="color:#777;margin-top:6px">التحليل آلي من الزيارات المسجّلة (النفوق من سجل النافق، ولو غايب من النفوق اليومي ثم نص الشكوى). التوصيات إرشادية للمراجعة الإكلينيكية وليست بديلًا عن تقديرك الميداني.</div></div>';
+}
 function setCmp(open,type){ if(open!==undefined) __cmpOpen=open; if(type!==undefined) __cmpType=type; if(currentClientDetailId) renderCycleComparison(currentClientDetailId); }
 function renderCycleComparison(id){
   const box=document.getElementById("cd_compare"); if(!box) return;
@@ -3327,6 +3435,7 @@ function renderCycleComparison(id){
   box.innerHTML='<div class="card" style="margin:0;border:1px solid #cfe3d6"><div class="row" style="justify-content:space-between;align-items:center"><b>📊 مقارنة دورات العميل</b><span>نوع الطائر: '+typeSel+' <button class="btn sm" onclick="setCmp(false)">إخفاء</button></span></div>'+
     (rows.length<2?'<p class="hint">في دورة واحدة بس من هذا النوع — مفيش مقارنة.</p>':'')+tbl+
     (canvasNeeded?'<div style="margin-top:10px"><b class="small">منحنى النفوق التراكمي % حسب العمر</b><canvas id="cmpCanvas" width="900" height="320" style="width:100%;max-width:900px;background:#fff;border:1px solid #eee;border-radius:6px"></canvas></div>':'<p class="hint">منحنى النفوق محتاج سجل نفوق يومي (بالتاريخ) في الزيارات.</p>')+
+    deepCycleAnalysisHTML(rows)+
     '<div style="margin-top:10px"><b>📝 التفسير</b><ul style="margin:6px 18px 0 0;line-height:1.9">'+notes.map(n=>'<li>'+e(n)+'</li>').join("")+'</ul>'+
     '<div class="small" style="color:#777;margin-top:4px">التفسير آلي من الأرقام المسجّلة؛ النفوق يعتمد على سجل النفوق بالزيارات، والمقارنة العادلة بين دورات بنفس العمر.</div></div></div>';
   if(canvasNeeded){
