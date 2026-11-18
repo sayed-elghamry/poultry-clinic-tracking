@@ -567,7 +567,7 @@
         <textarea id="v_opinion" placeholder="خلاصة الطبيب وتطوّر الحالة، بالإضافة للتشخيص المرجّح تلقائيًا أعلاه…"></textarea>
       </div>
       <div class="field" style="margin-top:8px">
-        <label>خطة العلاج (تُكتب هنا بالظبط زي ما هتتطبع في الروشتة)</label>
+        <label>خطة العلاج / ملاحظات (تُطبع أسفل الأدوية في الروشتة)</label>
         <textarea id="v_txplan" placeholder="مثال: ديوراماكس كيلو + تكسافير 500 سم في العشاء لمدة 3 أيام — يمكن دمج أكثر من دواء في نفس السطر بحرية.&#10;لو اتكتب هنا، هي اللي هتطبع في الروشتة بدل القائمة الآلية تحت. لو سبتها فاضية، هيتم بناء الروشتة تلقائيًا من قائمة «الأدوية الموصوفة» تحت."></textarea>
         <p class="hint">القائمة الآلية تحت («الأدوية الموصوفة») مستقلة عن الجزء ده — استخدمها لتسجيل كل دواء لوحده وربطه بمرض لغرض إحصاء الاستجابة، سواء كتبت خطة علاج هنا أو لأ.</p>
       </div>
@@ -2795,22 +2795,25 @@ async function buildPrescriptionCanvas(override){
   }
   const dx=confirmed.length?confirmed.join("، "):(top&&top.d&&top.score>0?top.d.ar:"");
   const programs=[];
-  if(house||opinion) programs.push({title:house,days:"",text:opinion});
-  if(treatmentPlan){
-    programs.push({title:"",days:"خطة العلاج",text:treatmentPlan});
-  }else{
-    let mNum=1;
-    groupMedsByDays(meds).forEach(g=>{
-      const lines=g.items.map(m=>formatMedLine(m.__combo?m:Object.assign({},m,{pack:""}),(mNum++)+"-").replace(/[💧💉]\s*/g,""));
-      programs.push({title:"",days:g.label,text:lines.join("\n")});
+  const anyTarget=meds.some(m=>m.target&&String(m.target).trim());
+  if(opinion||(house&&!anyTarget)) programs.push({title:house,days:"",text:opinion});
+  if(meds.length){
+    const tOrder=[]; meds.forEach(m=>{ const t=(m.target||"").trim(); if(!tOrder.includes(t)) tOrder.push(t); });
+    tOrder.forEach(t=>{
+      groupMedsByDays(meds.filter(m=>(m.target||"").trim()===t)).forEach((g,gi)=>{
+        let n=1;
+        const lines=g.items.map(m=>formatMedLine(m.__combo?m:Object.assign({},m,{pack:""}),(n++)+"-").replace(/[💧💉]\s*/g,"").replace(/\s+—\s+/g," "));
+        programs.push({title:gi===0?t:"",days:g.label,text:lines.join("\n")});
+      });
     });
   }
+  if(treatmentPlan) programs.push({title:"",days:"خطة العلاج",text:treatmentPlan});
   if(vaccs.length) programs.push({title:"",days:"التحصينات",text:vaccs.map(formatVaccLine).join("\n")});
   const d={
     owner:client?client.name:"", date, address:client?(client.address||""):"",
     age:(age!=null&&age!=="")?String(age):"", count:(count!=null&&count!=="")?String(count):"",
     type:birdType?(BIRD_LABEL[birdType]||birdType):"", dx, follow:follow?rxFmtDate(follow):"", wd:"", stamp:true,
-    programs, packs:treatmentPlan?[]:rxPackTotals(meds,waterL)
+    programs, packs:rxPackTotals(meds,waterL)
   };
   const S=8, canvas=document.createElement("canvas");
   canvas.width=Math.round(210*S); canvas.height=Math.round(297*S);
@@ -2826,13 +2829,14 @@ function collapseCombos(meds){
       const key=m.comboType+"|"+m.comboGroup;
       if(!(key in seen)){
         seen[key]=out.length;
-        out.push({__combo:true, comboType:m.comboType, comboNote:m.comboNote||"", comboDays:(m.comboDays&&m.comboDays.length)?m.comboDays:null, comboHours:m.comboHours||"", drugs:[m], days:m.days});
+        out.push({__combo:true, comboType:m.comboType, comboNote:m.comboNote||"", comboDays:(m.comboDays&&m.comboDays.length)?m.comboDays:null, comboHours:m.comboHours||"", drugs:[m], days:m.days, daysLabel:m.daysLabel||"", target:m.target||""});
       }else{
         const g=out[seen[key]];
         g.drugs.push(m);
         if(!g.comboNote && m.comboNote) g.comboNote=m.comboNote;
         if(!g.comboDays && m.comboDays && m.comboDays.length) g.comboDays=m.comboDays;
         if(!g.comboHours && m.comboHours) g.comboHours=m.comboHours;
+        if(!g.daysLabel && m.daysLabel) g.daysLabel=m.daysLabel;
       }
     }else{
       out.push(m);
@@ -2844,7 +2848,9 @@ function groupMedsByDays(meds){
   const groups=[]; const index={};
   collapseCombos(meds).forEach(m=>{
     let key, label;
-    if(m.__combo && m.comboType==="injection"){
+    if(m.daysLabel && String(m.daysLabel).trim()){
+      label=String(m.daysLabel).trim(); key="lbl:"+label.replace(/\s+/g," ");
+    } else if(m.__combo && m.comboType==="injection"){
       key="__injection_once__"; label="مرة واحدة (حقن)";
     } else if(m.__combo && m.comboDays && m.comboDays.length){
       key="combo:"+[...m.comboDays].sort((a,b)=>a-b).join(",");
@@ -6177,6 +6183,10 @@ function addMedRow(){
         <select class="m_purpose">${purposeOptions}</select>
       </div>
     </div>
+    <div class="grid2" style="margin-top:6px">
+      <div class="field"><label>🏠 يخص (اختياري — يظهر كعنوان في الروشتة)</label><input class="m_target" placeholder="مثال: عنبر 3 أو كل العنابر"></div>
+      <div class="field"><label>📅 أيام الإعطاء (اختياري)</label><input class="m_dayslabel" placeholder="مثال: الأربعاء الخميس الجمعة"></div>
+    </div>
     <div class="row" style="margin-top:8px;justify-content:space-between">
       <div class="small m_note"></div>
       <button class="btn sm danger" onclick="document.getElementById('${id}').remove()">🗑 حذف الدواء</button>
@@ -6259,6 +6269,8 @@ function collectMeds(){
       comboNote:r.querySelector(".m_comboNote")?r.querySelector(".m_comboNote").value.trim():"",
       comboDays:Array.from(r.querySelectorAll(".m_comboDay:checked")).map(cb=>parseInt(cb.value)),
       comboHours:r.querySelector(".m_comboHours")?r.querySelector(".m_comboHours").value:"",
+      target:r.querySelector(".m_target")?r.querySelector(".m_target").value.trim():"",
+      daysLabel:r.querySelector(".m_dayslabel")?r.querySelector(".m_dayslabel").value.trim():"",
       response:""
     };
   }).filter(m=>m.drug);
@@ -7353,6 +7365,8 @@ function editVisit(id){
       if(m.comboNote && row.querySelector(".m_comboNote")) row.querySelector(".m_comboNote").value=m.comboNote;
       if(m.comboDays && m.comboDays.length) row.querySelectorAll(".m_comboDay").forEach(cb=>{ if(m.comboDays.includes(parseInt(cb.value))) cb.checked=true; });
       if(m.comboHours && row.querySelector(".m_comboHours")) row.querySelector(".m_comboHours").value=m.comboHours;
+      if(m.target && row.querySelector(".m_target")) row.querySelector(".m_target").value=m.target;
+      if(m.daysLabel && row.querySelector(".m_dayslabel")) row.querySelector(".m_dayslabel").value=m.daysLabel;
     }
   });
   document.getElementById("vaccRows").innerHTML=""; vaccCount=0;
